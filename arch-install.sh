@@ -106,7 +106,7 @@ post_chroot_setup() {
     echo "default_entry: 1" >> /boot/limine.conf
     echo "" >> /boot/limine.conf
     echo "/Arch Linux" >> /boot/limine.conf
-    echo "    protocol: Linux" >> /boot/limine.conf
+    echo "    protocol: linux" >> /boot/limine.conf
     echo "    kernel_path: boot():/vmlinuz-linux" >> /boot/limine.conf
     echo "    module_path: boot():/initramfs-linux.img" >> /boot/limine.conf
     echo "    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw" >> /boot/limine.conf
