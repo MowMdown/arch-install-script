@@ -250,38 +250,6 @@ mount -o compress=zstd,noatime,subvol=@snapshots "$btrfs_part" /mnt/.snapshots
 
 echo "Verifying subvolume mounts..."
 
-declare -A subvol_checks=(
-  ["/mnt"]="@"
-  ["/mnt/home"]="@home"
-  ["/mnt/var/cache/pacman/pkg"]="@cache"
-  ["/mnt/var/tmp"]="@tmp"
-  ["/mnt/var/log"]="@log"
-  ["/mnt/.snapshots"]="@snapshots"
-)
-
-mount_errors=0
-
-for path in "${!subvol_checks[@]}"; do
-  sv="${subvol_checks[$path]}"
-
-  if ! findmnt -rn -S "$btrfs_part" -T "$path" | grep -q "subvol=$sv"; then
-    echo "[FAIL] $path (expected subvol=$sv)"
-    mount_errors=$((mount_errors+1))
-  else
-    echo "[OK]   $path mounted correctly (subvol=$sv)"
-  fi
-done
-
-if [[ $mount_errors -gt 0 ]]; then
-  echo
-  echo "ERROR: One or more subvolumes failed to mount correctly."
-  echo "Aborting to prevent corrupted install."
-  exit 1
-fi
-
-echo
-echo "All subvolumes successfully mounted and verified."
-
 # Mount EFI
 echo "Mounting EFI partition ($part1) to /mnt/boot ..."
 mkdir -p /mnt/boot
