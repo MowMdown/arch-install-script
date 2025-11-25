@@ -93,11 +93,14 @@ post_chroot_setup() {
     sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
     # Enable basic services
-    pacman -S --noconfirm networkmanager
-    systemctl enable NetworkManager
     systemctl enable fstrim.timer
+    
+    pacman -S --noconfirm networkmanager
+    systemctl enable NetworkManager.service
 
-    # Configure bootloader (Limine, EFI assumed)
+    pacman -S --noconfirm reflector
+    systemctl enable reflector.service
+
     pacman -S --noconfirm limine
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
@@ -117,9 +120,16 @@ post_chroot_setup() {
     if grep -q "SWAP" /etc/fstab; then
         swapon -a
     fi
+    
+    # Enable ZRAM
+    pacman -S --noconfirm zram-generator
+    echo "[zram0]" >> /etc/systemd/zram-generator.conf
+    echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
+    echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
     echo
     echo "Post-chroot configuration complete!"
+    sleep 5
 }
 
 # ---------- start ----------
@@ -269,8 +279,8 @@ echo "Now we'll run pacstrap to install base system to /mnt."
 confirm "Proceed to pacstrap base system to /mnt? (This will download & install packages)"
 
 # Install base system (pacstrap) with requested packages
-# Default packages: base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager efibootmgr btrfs-progs
-base_pkgs="base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager efibootmgr btrfs-progs"
+# Default packages: base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator
+base_pkgs="base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
 if [[ -n "${extra_packages// }" ]]; then
   echo "Including extra packages: $extra_packages"
   base_pkgs="$base_pkgs $extra_packages"
