@@ -51,15 +51,39 @@ post_chroot_setup() {
     ln -sf /usr/share/zoneinfo/America/New-York /etc/localtime
     hwclock --systohc
 
-    # Set root password
-    echo "root:changeme" | chpasswd
-    echo "Root password set to 'changeme'. Please change after first login."
 
-    # Create a standard user
-    username="archuser"
-    useradd -m -G wheel -s /bin/bash "$username"
-    echo "${username}:changeme" | chpasswd
-    echo "User '$username' created. Please change password after first login."
+   # --- Set root password interactively ---
+    while true; do
+        read -s -p "Enter new root password: " root_pass
+        echo
+        read -s -p "Confirm root password: " root_pass_confirm
+        echo
+        if [ "$root_pass" = "$root_pass_confirm" ]; then
+            echo "root:$root_pass" | chpasswd
+            echo "Root password set successfully."
+            break
+        else
+            echo "Passwords do not match. Please try again."
+        fi
+    done
+
+    # --- Create a standard user interactively ---
+    read -p "Enter username for new user: " username
+    
+    while true; do
+        read -s -p "Enter password for user '$username': " user_pass
+        echo
+        read -s -p "Confirm password for user '$username': " user_pass_confirm
+        echo
+        if [ "$user_pass" = "$user_pass_confirm" ]; then
+            useradd -m -G wheel -s /bin/bash "$username"
+            echo "$username:$user_pass" | chpasswd
+            echo "User '$username' created successfully."
+            break
+        else
+            echo "Passwords do not match. Please try again."
+        fi
+    done
 
     # Enable sudo for wheel group
     pacman -S --noconfirm sudo
