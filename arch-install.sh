@@ -34,7 +34,6 @@ choose_disk() {
 }
 
 post_chroot_setup() {
-
     # --- Interactive Locale and Timezone Setting ---
     read -p "Enter desired locale (e.g., en_US.UTF-8): " locale_gen
     read -p "Enter desired timezone (e.g., Europe/London or America/New_York): " timezone_loc
