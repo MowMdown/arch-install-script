@@ -95,7 +95,7 @@ post_chroot_setup() {
     --part 1 \
     --label "Arch Linux Limine Bootloader" \
     --loader '\EFI\BOOT\BOOTX64.EFI' \
-    --Unicode
+    --unicode
     echo "EFI boot entry created successfully."
 
 
