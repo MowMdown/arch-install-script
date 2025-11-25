@@ -85,6 +85,9 @@ post_chroot_setup() {
         fi
     done
 
+    # Update packages
+    pacman -Syu
+    
     # Enable sudo for wheel group
     pacman -S --noconfirm sudo
     sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
