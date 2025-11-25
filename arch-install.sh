@@ -75,17 +75,16 @@ post_chroot_setup() {
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
-    cat <<EOF > /mnt/boot/limine.conf
-    timeout: 5
-    default_entry: 1
-    /Arch Linux
-        protocol: Linux
-        kernel_path: boot():/vmlinuz-linux
-        module_path: boot():/initramfs-linux.img
-        cmdline: root=LABEL=ARCH rootflags=subvol=@ rw
-    EOF
+    echo "timeout: 5" > /boot/limine.conf
+    echo "default_entry: 1" >> /boot/limine.conf
+    echo "" >> /boot/limine.conf
+    echo "/Arch Linux" >> /boot/limine.conf
+    echo "    protocol: Linux" >> /boot/limine.conf
+    echo "    kernel_path: boot():/vmlinuz-linux" >> /boot/limine.conf
+    echo "    module_path: boot():/initramfs-linux.img" >> /boot/limine.conf
+    echo "    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw" >> /boot/limine.conf
 
-    echo "Created /mnt/boot/limine.conf"
+    echo "Created /boot/limine.conf"
 
     # Add bootloader entry
     echo
