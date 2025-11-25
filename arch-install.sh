@@ -8,7 +8,7 @@ set -euo pipefail
 confirm() {
   # Usage: confirm "message"
   local msg="$1"
-  echo
+  echo ""
   echo ">>> $msg"
   echo "Type YES to proceed, anything else to abort:"
   read -r answer
@@ -23,7 +23,7 @@ choose_disk() {
   # Show only whole-disk devices (no partitions) and their sizes & model where available
   # using lsblk
   lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1
-  echo
+  echo ""
   echo "Enter the line number of the disk to use (will be wiped):"
   read -r line
   disk=$(lsblk -dpno NAME | sed -n "${line}p")
@@ -40,24 +40,26 @@ bytes_to_mib() {
 }
 
 post_chroot_setup() {
-    echo "=== Starting post-chroot configuration ==="
 
-    # Set Defaults
-    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+    # --- Interactive Locale and Timezone Setting ---
+    read -p "Enter desired locale (e.g., en_US.UTF-8): " locale_gen
+    read -p "Enter desired timezone (e.g., Europe/London or America/New_York): " timezone_loc
+    echo "$locale_gen UTF-8" > /etc/locale.gen
     locale-gen
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+    # Extract language part (e.g., en_US) for LANG
+    lang_var=$(echo "$locale_gen" | cut -d'.' -f1)
+    echo "LANG=$lang_var.UTF-8" > /etc/locale.conf
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
-    ln -sf /usr/share/zoneinfo/America/New-York /etc/localtime
+    ln -sf /usr/share/zoneinfo/"$timezone_loc" /etc/localtime
     hwclock --systohc
-
 
    # --- Set root password interactively ---
     while true; do
         read -s -p "Enter new root password: " root_pass
-        echo
+        echo ""
         read -s -p "Confirm root password: " root_pass_confirm
-        echo
+        echo ""
         if [ "$root_pass" = "$root_pass_confirm" ]; then
             echo "root:$root_pass" | chpasswd
             echo "Root password set successfully."
@@ -72,9 +74,9 @@ post_chroot_setup() {
     
     while true; do
         read -s -p "Enter password for user '$username': " user_pass
-        echo
+        echo ""
         read -s -p "Confirm password for user '$username': " user_pass_confirm
-        echo
+        echo ""
         if [ "$user_pass" = "$user_pass_confirm" ]; then
             useradd -m -G wheel -s /bin/bash "$username"
             echo "$username:$user_pass" | chpasswd
@@ -84,27 +86,21 @@ post_chroot_setup() {
             echo "Passwords do not match. Please try again."
         fi
     done
-
+    
+    # Enable sudo for wheel group
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    
     # Update packages
     pacman -Syu
     
-    # Enable sudo for wheel group
-    pacman -S --noconfirm sudo
-    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-
     # Enable basic services
     systemctl enable fstrim.timer
-    
-    pacman -S --noconfirm networkmanager
     systemctl enable NetworkManager.service
-
-    pacman -S --noconfirm reflector
     systemctl enable reflector.service
 
-    pacman -S --noconfirm limine
+    # Install bootloader and add bootloader entry
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
-
     echo "timeout: 5" > /boot/limine.conf
     echo "default_entry: 1" >> /boot/limine.conf
     echo "" >> /boot/limine.conf
@@ -113,7 +109,6 @@ post_chroot_setup() {
     echo "    kernel_path: boot():/vmlinuz-linux" >> /boot/limine.conf
     echo "    module_path: boot():/initramfs-linux.img" >> /boot/limine.conf
     echo "    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw" >> /boot/limine.conf
-
     echo "Created /boot/limine.conf"
 
     # Enable swap if present
@@ -122,12 +117,11 @@ post_chroot_setup() {
     fi
     
     # Enable ZRAM
-    pacman -S --noconfirm zram-generator
     echo "[zram0]" >> /etc/systemd/zram-generator.conf
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
-    echo
+    echo ""
     echo "Post-chroot configuration complete!"
     sleep 5
 }
@@ -151,7 +145,7 @@ mem_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
 mem_mib=$(( (mem_kb + 1023) / 1024 ))
 echo "Detected system RAM: ${mem_mib} MiB"
 
-echo
+echo ""
 echo "Do you want to enable a swap partition equal to RAM (${mem_mib} MiB)? (y/N)"
 read -r use_swap_raw
 use_swap="no"
@@ -159,11 +153,11 @@ if [[ "$use_swap_raw" =~ ^[Yy] ]]; then
   use_swap="yes"
 fi
 
-echo
+echo ""
 echo "Any extra packages to install with pacstrap? (space-separated, or leave empty):"
 read -r extra_packages
 
-echo
+echo ""
 echo "We will create these partitions on ${disk}:"
 echo "  1) 2 GiB EFI FAT32 labeled 'EFI'"
 if [[ "$use_swap" == "yes" ]]; then
@@ -191,10 +185,6 @@ wipefs -a "$disk" || true
 
 # Build parted commands
 echo "Creating partitions..."
-# We'll use parted for precise MiB-level sizes
-# partition 1: 1MiB start to 2048MiB (2GiB)
-# partition 2: if swap -> 2048MiB to 2048MiB + mem_mib MiB
-# final btrfs partition -> rest of disk
 parted -s "$disk" mklabel gpt
 
 # Using 1MiB alignment
@@ -279,8 +269,21 @@ echo "Now we'll run pacstrap to install base system to /mnt."
 confirm "Proceed to pacstrap base system to /mnt? (This will download & install packages)"
 
 # Install base system (pacstrap) with requested packages
+# --- Microcode Detection ---
+cpu_vendor=$(lscpu | awk '/Vendor ID/ {print $3}')
+microcode_pkg=""
+if [[ "$cpu_vendor" == "AuthenticAMD" ]]; then
+  microcode_pkg="amd-ucode"
+  echo "Detected AMD CPU, including amd-ucode."
+elif [[ "$cpu_vendor" == "GenuineIntel" ]]; then
+  microcode_pkg="intel-ucode"
+  echo "Detected Intel CPU, including intel-ucode."
+else
+  echo "Could not detect CPU vendor, including both amd-ucode and intel-ucode for safety."
+  microcode_pkg="amd-ucode intel-ucode"
+fi
 # Default packages: base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator
-base_pkgs="base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
+base_pkgs="base base-devel linux linux-firmware sof-firmware $microcode_pkg limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
 if [[ -n "${extra_packages// }" ]]; then
   echo "Including extra packages: $extra_packages"
   base_pkgs="$base_pkgs $extra_packages"
@@ -293,18 +296,18 @@ pacstrap -K /mnt $base_pkgs
 echo "Generating /mnt/etc/fstab with genfstab -L ..."
 genfstab -L /mnt > /mnt/etc/fstab
 
-echo
+echo ""
 echo "pacstrap and fstab generation complete."
 
 # Provide the user the chance to chroot now
-echo
+echo ""
 echo "Everything required for entering the new system is ready."
 echo "We will now copy this script into the new system at /root/arch-install-automated.sh for later reference."
 mkdir -p /mnt/root
 cp -- "$0" /mnt/root/arch-install-automated.sh
 chmod +x /mnt/root/arch-install-automated.sh
 
-echo
+echo ""
 echo "Final step: arch-chroot into /mnt to finish configuration."
 echo "Type YES to proceed into chroot; anything else will exit leaving system mounted."
 read -r final_go
@@ -312,7 +315,7 @@ if [[ "$final_go" == "YES" ]]; then
   echo "Executing post-chroot configuration automatically..."
   arch-chroot /mnt /bin/bash -c "$(declare -f post_chroot_setup); post_chroot_setup"
   # Add bootloader entry
-  echo
+  echo ""
   echo "Adding EFI Bootloader Entry"
   efibootmgr \
   --create \
@@ -326,8 +329,8 @@ if [[ "$final_go" == "YES" ]]; then
   confirm "Would you like to reboot the system now?"
   echo "Unmounting disk to prepare for reboot"
   umount -R /mnt
-  echo "Please reboot to boot into New System"
-  reboot
+  echo "Please reboot your system"
+  confirm reboot
 else
   echo "Exiting. System is mounted under /mnt; remember to chroot later with: arch-chroot /mnt"
   exit 0
