@@ -90,7 +90,7 @@ post_chroot_setup() {
     
     # Enable sudo for wheel group
     pacman -S --noconfirm sudo
-    sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
     # Enable basic services
     systemctl enable fstrim.timer
