@@ -231,21 +231,6 @@ done
 sync
 umount /mnt
 
-# Mount btrfs to /mnt for subvolume creation
-echo "Mounting ${btrfs_part} to /mnt with subvolid=5 to create subvolumes..."
-mount -o subvolid=5 "$btrfs_part" /mnt
-
-echo "Creating subvolumes..."
-btrfs subvolume create /mnt/@
-btrfs subvolume create /mnt/@home
-btrfs subvolume create /mnt/@cache
-btrfs subvolume create /mnt/@tmp
-btrfs subvolume create /mnt/@log
-btrfs subvolume create /mnt/@snapshots
-
-sync
-umount /mnt
-
 echo "Remounting Btrfs partition to /mnt before directory creation..."
 mount "$btrfs_part" /mnt
 
