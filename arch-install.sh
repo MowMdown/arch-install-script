@@ -229,13 +229,12 @@ done
 
 # Sync and unmount
 sync
-umount /mnt
+umount -R /mnt
 
 echo "Remounting Btrfs partition to /mnt before directory creation..."
-mount "$btrfs_part" /mnt
+mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 
 echo "Creating required mount directories..."
-mkdir -p /mnt
 mkdir -p /mnt/home
 mkdir -p /mnt/var/cache/pacman/pkg
 mkdir -p /mnt/var/tmp
@@ -243,7 +242,6 @@ mkdir -p /mnt/var/log
 mkdir -p /mnt/.snapshots
 
 echo "Mounting subvolumes with options..."
-mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
 mount -o compress=zstd,noatime,subvol=@cache "$btrfs_part" /mnt/var/cache/pacman/pkg
 mount -o compress=zstd,noatime,subvol=@tmp "$btrfs_part" /mnt/var/tmp
