@@ -113,19 +113,6 @@ post_chroot_setup() {
 
     echo "Created /boot/limine.conf"
 
-    # Add bootloader entry
-    echo
-    echo "Adding EFI Bootloader Entry"
-    efibootmgr \
-    --create \
-    --disk "$disk" \
-    --part 1 \
-    --label "Arch Linux Limine Bootloader" \
-    --loader '\EFI\BOOT\BOOTX64.EFI' \
-    --unicode
-    echo "EFI boot entry created successfully."
-
-
     # Enable swap if present
     if grep -q "SWAP" /etc/fstab; then
         swapon -a
@@ -314,6 +301,17 @@ read -r final_go
 if [[ "$final_go" == "YES" ]]; then
   echo "Executing post-chroot configuration automatically..."
   arch-chroot /mnt /bin/bash -c "$(declare -f post_chroot_setup); post_chroot_setup"
+  # Add bootloader entry
+  echo
+  echo "Adding EFI Bootloader Entry"
+  efibootmgr \
+  --create \
+  --disk "$disk" \
+  --part 1 \
+  --label "Arch Linux Limine Bootloader" \
+  --loader '\EFI\BOOT\BOOTX64.EFI' \
+  --unicode
+  echo "EFI boot entry created successfully."
 else
   echo "Exiting. System is mounted under /mnt; remember to chroot later with: arch-chroot /mnt"
   exit 0
