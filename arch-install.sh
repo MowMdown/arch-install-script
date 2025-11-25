@@ -141,13 +141,9 @@ fi
 
 echo "=== Arch automated partitioner + btrfs subvolume creator ==="
 echo "WARNING: This script WILL DESTROY data on the selected disk."
-confirm "I understand this will destroy the selected disk and want to continue"
 
 # select disk
 choose_disk
-
-# final confirmation with the exact disk path
-confirm "FINAL CHECK: I confirm I want to wipe and partition the disk: ${disk}"
 
 # Get current RAM in MiB for swap suggestion
 # We'll use /proc/meminfo
