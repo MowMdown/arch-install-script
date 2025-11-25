@@ -12,7 +12,7 @@ confirm() {
   echo ">>> $msg"
   echo "Type YES to proceed, anything else to abort:"
   read -r answer
-  if [[ "$answer" != "YES" || "$answer" != "Yes" || "$answer" != "yes" || "$answer" != "Y" || "$answer" != "y" ]]; then
+  if [[ "$answer" != "YES" ]]; then
     echo "Aborted by user."
     exit 1
   fi
