@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# arch-install.sh
 # Usage: run as root inside an Arch install/live environment.
 set -euo pipefail
 
 # ---------- Helper Functions ----------
-
 confirm() {
     local msg="$1"
     echo -e "\n>>> $msg"
@@ -32,21 +30,18 @@ wipe_and_partition_disk() {
     local use_swap="$2"
     local mem_mib="$3"
 
-    # Unmount and wipe
     mapfile -t mounted < <(lsblk -lnpo NAME,MOUNTPOINT "$disk" | awk '$2!="" {print $1}')
     for p in "${mounted[@]}"; do umount "$p" || true; done
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
     parted -s "$disk" mklabel gpt
 
-    # EFI size logic
     local disk_mib efi_mib
     disk_mib=$(parted -sm "$disk" unit MiB print | awk -F: '/^/ {print $2}' | head -n1)
     efi_mib=$(( disk_mib < 65536 ? 512 : disk_mib < 262144 ? 1024 : 2048 ))
     local efi_end=$((efi_mib + 1))
     local next_start=$efi_end
 
-    # Create partitions
     parted -s "$disk" mkpart primary fat32 1MiB "${efi_end}MiB"
     parted -s "$disk" set 1 boot on
     part1="${disk}1"
@@ -69,11 +64,9 @@ wipe_and_partition_disk() {
     partprobe "$disk" || true
     sleep 1
 
-    # Format
     mkfs.fat -F32 -n EFI "$part1"
     [[ "$use_swap" == "yes" ]] && { mkswap -L SWAP "$part2"; swapon "$part2"; }
     mkfs.btrfs -f -L ARCH "$btrfs_part"
-
     echo "$part1" "$btrfs_part"
 }
 
@@ -95,14 +88,17 @@ create_btrfs_subvolumes() {
 mount_efi() { mount --mkdir "$1" /mnt/boot; }
 
 install_base_system() {
-    local extra_packages="$1"
+    read -rp "Extra packages for pacstrap (space-separated)? " extra_packages
     confirm "Proceed to pacstrap base system to /mnt?"
     local cpu_vendor microcode_pkg
     cpu_vendor=$(lscpu | awk '/Vendor ID/ {print $3}')
     microcode_pkg=$([[ "$cpu_vendor" == "AuthenticAMD" ]] && echo "amd-ucode" || [[ "$cpu_vendor" == "GenuineIntel" ]] && echo "intel-ucode" || echo "amd-ucode intel-ucode")
     base_pkgs="base base-devel linux linux-firmware sof-firmware $microcode_pkg limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
     [[ -n "${extra_packages// }" ]] && base_pkgs="$base_pkgs $extra_packages"
+
+    echo "Installing base system with packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
+    
     genfstab -L /mnt > /mnt/etc/fstab
 }
 
@@ -114,8 +110,6 @@ post_chroot_setup() {
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
     ln -sf /usr/share/zoneinfo/"$timezone_loc" /etc/localtime; hwclock --systohc
-
-    # Root password
     while true; do
         read -s -p "Root password: " root_pass; echo
         read -s -p "Confirm: " root_pass_confirm; echo
@@ -123,9 +117,7 @@ post_chroot_setup() {
         echo "Passwords do not match."
     done
     echo "root:$root_pass" | chpasswd
-
-    # Standard user
-    read -p "Username for new user: " username
+    read -p "Username for new user: " username    
     while true; do
         read -s -p "Password for $username: " user_pass; echo
         read -s -p "Confirm: " user_pass_confirm; echo
@@ -137,9 +129,9 @@ post_chroot_setup() {
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
     pacman -Syu
+    
     systemctl enable fstrim.timer NetworkManager.service reflector.service
 
-    # Limine config using echo (original method)
     echo "timeout: 5" > /boot/limine.conf
     echo "default_entry: 1" >> /boot/limine.conf
     echo "" >> /boot/limine.conf
@@ -157,7 +149,6 @@ post_chroot_setup() {
 }
 
 # ---------- Main Flow ----------
-
 [[ $EUID -ne 0 ]] && { echo "Run as root."; exit 1; }
 echo "=== Arch automated installer with Btrfs subvolumes ==="
 echo "WARNING: This script WILL DESTROY data on the selected disk."
@@ -166,14 +157,11 @@ choose_disk
 mem_mib=$(get_ram_mib)
 echo "Detected system RAM: ${mem_mib} MiB"
 
-# Interactive swap decision
 echo ""
 echo "Do you want to enable a swap partition equal to RAM (${mem_mib} MiB)? (y/N)"
 read -r use_swap_raw
 use_swap="no"
 [[ "$use_swap_raw" =~ ^[Yy] ]] && use_swap="yes"
-
-read -rp "Extra packages for pacstrap (space-separated)? " extra_packages
 
 confirm "Proceed with disk partitioning?"
 parts=($(wipe_and_partition_disk "$disk" "$use_swap" "$mem_mib"))
@@ -181,7 +169,8 @@ part1="${parts[0]}"; btrfs_part="${parts[1]}"
 
 create_btrfs_subvolumes "$btrfs_part"
 mount_efi "$part1"
-install_base_system "$extra_packages"
+
+install_base_system
 
 mkdir -p /mnt/root
 cp -- "$0" /mnt/root/arch-install-automated.sh
@@ -197,4 +186,3 @@ if [[ "$final_go" == "YES" ]]; then
 else
     echo "System mounted under /mnt; remember to chroot later."
 fi
-
