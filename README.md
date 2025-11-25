@@ -1,6 +1,6 @@
 # Arch Linux Automated Installer Script
 
-**Filename:** `arch-install-script.sh`  
+**Filename:** `arch-install.sh`  
 **Environment:** Must be run as `root` inside an Arch Linux live environment.
 
 ---
@@ -63,7 +63,7 @@ This script automates the installation of Arch Linux on a target disk. It handle
 
 1. Boot into an Arch Linux live environment.
 2. Download or copy the script to the live environment.
-3. Run: `chmod +x ./arch-install-script.sh`
+3. Run: `chmod +x ./arch-install.sh`
 
 4. Follow interactive prompts for:
    - Disk selection
