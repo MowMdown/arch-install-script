@@ -20,8 +20,7 @@ confirm() {
 
 choose_disk() {
   echo "Available disks:"
-  # Show only whole-disk devices (no partitions) and their sizes & model where available
-  # using lsblk
+  # Show only whole-disk devices (no partitions) and their sizes & model where available using lsblk
   lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1
   echo ""
   echo "Enter the line number of the disk to use (will be wiped):"
@@ -32,11 +31,6 @@ choose_disk() {
     exit 1
   fi
   echo "Selected disk: $disk"
-}
-
-bytes_to_mib() {
-  # converts bytes to MiB rounded up
-  awk "BEGIN{printf \"%d\", ($1/1024/1024)+0.5}"
 }
 
 post_chroot_setup() {
@@ -187,20 +181,40 @@ wipefs -a "$disk" || true
 echo "Creating partitions..."
 parted -s "$disk" mklabel gpt
 
-# Using 1MiB alignment
-parted -s "$disk" mkpart primary fat32 1MiB 2048MiB
+# Detect disk size in MiB
+disk_mib=$(parted -sm "$disk" unit MiB print | awk -F: '/^/ {print $2}' | head -n1)
+
+# Determine EFI size in MiB
+if (( disk_mib < 65536 )); then        # < 64 GiB
+  efi_mib=512
+elif (( disk_mib < 262144 )); then     # < 256 GiB
+  efi_mib=1024
+else
+  efi_mib=2048
+fi
+
+# Determine swap size (nearest GiB)
+swap_gib=$(( (mem_mib + 1023) / 1024 ))   # ceil to GiB
+swap_mib=$(( swap_gib * 1024 ))
+
+efi_end_mib=$((1 + efi_mib))
+next_start_mib=$efi_end_mib
+
+# Create EFI
+parted -s "$disk" mkpart primary fat32 1MiB "${efi_end_mib}MiB"
 parted -s "$disk" set 1 boot on
 part1="${disk}1"
 
 if [[ "$use_swap" == "yes" ]]; then
-  swap_end_mib=$((2048 + mem_mib))
-  parted -s "$disk" mkpart primary linux-swap 2048MiB "${swap_end_mib}MiB"
+  swap_end_mib=$((next_start_mib + swap_mib))
+  parted -s "$disk" mkpart primary linux-swap "${next_start_mib}MiB" "${swap_end_mib}MiB"
   part2="${disk}2"
+
   parted -s "$disk" mkpart primary btrfs "${swap_end_mib}MiB" 100%
   part3="${disk}3"
 else
-  parted -s "$disk" mkpart primary btrfs 2048MiB 100%
-  part2="${disk}2"  # this will be the btrfs partition
+  parted -s "$disk" mkpart primary btrfs "${next_start_mib}MiB" 100%
+  part2="${disk}2"
 fi
 
 # Wait for kernel to refresh partition table
@@ -245,11 +259,7 @@ echo "Remounting Btrfs partition to /mnt before directory creation..."
 mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 
 echo "Creating required mount directories..."
-mkdir -p /mnt/home
-mkdir -p /mnt/var/cache/pacman/pkg
-mkdir -p /mnt/var/tmp
-mkdir -p /mnt/var/log
-mkdir -p /mnt/.snapshots
+mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
 
 echo "Mounting subvolumes with options..."
 mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
@@ -262,13 +272,10 @@ echo "Verifying subvolume mounts..."
 
 # Mount EFI
 echo "Mounting EFI partition ($part1) to /mnt/boot ..."
-mkdir -p /mnt/boot
-mount "$part1" /mnt/boot
-
-echo "Now we'll run pacstrap to install base system to /mnt."
-confirm "Proceed to pacstrap base system to /mnt? (This will download & install packages)"
+mount --mkdir "$part1" /mnt/boot
 
 # Install base system (pacstrap) with requested packages
+confirm "Proceed to pacstrap base system to /mnt? (This will download & install packages)"
 # --- Microcode Detection ---
 cpu_vendor=$(lscpu | awk '/Vendor ID/ {print $3}')
 microcode_pkg=""
@@ -288,7 +295,6 @@ if [[ -n "${extra_packages// }" ]]; then
   echo "Including extra packages: $extra_packages"
   base_pkgs="$base_pkgs $extra_packages"
 fi
-
 echo "Running pacstrap -K /mnt $base_pkgs ..."
 pacstrap -K /mnt $base_pkgs
 
