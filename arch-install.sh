@@ -312,6 +312,12 @@ if [[ "$final_go" == "YES" ]]; then
   --loader '\EFI\BOOT\BOOTX64.EFI' \
   --unicode
   echo "EFI boot entry created successfully."
+  echo ""
+  confirm "Would you like to reboot the system now?"
+  echo "Unmounting disk to prepare for reboot"
+  umount -R /mnt
+  echo "Please reboot to boot into New System"
+  reboot
 else
   echo "Exiting. System is mounted under /mnt; remember to chroot later with: arch-chroot /mnt"
   exit 0
