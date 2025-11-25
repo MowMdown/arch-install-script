@@ -71,7 +71,7 @@ post_chroot_setup() {
         read -s -p "Confirm password for user '$username': " user_pass_confirm
         echo ""
         if [ "$user_pass" = "$user_pass_confirm" ]; then
-            useradd -m -G wheel -s /bin/bash "$username"
+            useradd -m -G wheel "$username"
             echo "$username:$user_pass" | chpasswd
             echo "User '$username' created successfully."
             break
