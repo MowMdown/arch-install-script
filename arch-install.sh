@@ -230,9 +230,7 @@ run_pacstrap() {
         base_pkgs="$base_pkgs $extra_packages"
     fi
 
-    confirm "Proceed to pacstrap base system to /mnt?"
     pacstrap -K /mnt $base_pkgs
-
     genfstab -L /mnt > /mnt/etc/fstab
 }
 
@@ -259,7 +257,7 @@ finalize_install() {
         --loader '\EFI\BOOT\BOOTX64.EFI' \
         --unicode
 
-        confirm "Reboot now?"
+        confirm "Reboot to system now?"
         umount -R /mnt
         reboot
     else
