@@ -15,14 +15,41 @@ confirm() {
 }
 
 choose_disk() {
-  echo "Available disks:"
-  lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1
-  echo
-  echo "Enter the line number of the disk to use (will be wiped):"
-  read -r line
-  disk=$(lsblk -dpno NAME | sed -n "${line}p")
-  [[ -n "$disk" ]] || { echo "Invalid selection."; exit 1; }
-  echo "Selected disk: $disk"
+  while true; do
+    echo "Available disks:"
+    lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
+    echo -n "Enter the line number of the disk to use (will be wiped): "
+    read -r line
+    if ! [[ "$line" =~ ^[0-9]+$ ]]; then
+      echo "Error: Input must be a number."
+      continue
+    fi
+    disk=$(lsblk -dpno NAME | sed -n "${line}p")
+    if [[ -n "$disk" ]]; then
+      echo "Selected disk: $disk"
+      break
+    else
+      echo "Invalid selection. Please choose a valid line number."
+    fi
+  donechoose_disk() {
+  while true; do
+    echo "Available disks:"
+    lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
+    echo -n "Enter the line number of the disk to use (will be wiped): "
+    read -r line
+    if ! [[ "$line" =~ ^[0-9]+$ ]]; then
+      echo "Error: Input must be a number."
+      continue
+    fi
+    disk=$(lsblk -dpno NAME | sed -n "${line}p")
+    if [[ -n "$disk" ]]; then
+      echo "Selected disk: $disk"
+      break
+    else
+      echo "Invalid selection. Please choose a valid line number."
+    fi
+  done
+}
 }
 
 cleanup_disk() {
@@ -132,7 +159,7 @@ post_chroot_setup() {
 
     echo
     echo "Post-chroot configuration complete!"
-    sleep 5
+    sleep 1
 }
 
 set_swap() {
