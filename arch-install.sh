@@ -324,7 +324,6 @@ main() {
     format_partitions
     subvolumes
     run_pacstrap
-    chroot_setup
     finalize_install
 }
 
