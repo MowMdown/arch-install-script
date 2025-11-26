@@ -54,7 +54,7 @@ set_swap() {
     echo
     echo "Enable swap equal to RAM (${mem_mib} MiB)? (y/N)"
     read -r use_swap_raw
-    if [[ "{$use_swap_raw,,}" == "y" ]]; then
+    if [[ "${use_swap_raw,,}" == "y" ]]; then
         use_swap="yes"
     else
         use_swap="no"
