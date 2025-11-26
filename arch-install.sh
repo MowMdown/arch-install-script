@@ -8,6 +8,7 @@ choose_disk() {
         lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
         echo -n "Enter the line number of the disk to use (will be wiped): "
         read -r line
+        
         if ! [[ "$line" =~ ^[0-9]+$ ]]; then
             echo "Error: Input must be a number."
             continue
@@ -63,26 +64,24 @@ set_swap() {
 
 # Partition disk with selected disk and swap options
 partition_disk() {
-    echo "Wiping partition table and signatures ..."
+    echo "Wiping partition table and signatures on $disk..."
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
-
-    echo "Creating partitions..."
-    parted -s "$disk" mklabel gpt
-
-    parted -s "$disk" mkpart primary fat32 1MiB 2048MiB
-    parted -s "$disk" set 1 boot on
+    echo "Creating partitions with sgdisk..."
+    sgdisk -n1:1MiB:2048MiB -t1:EF00 "$disk"
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
+    
         swap_end_mib=$((2048 + mem_mib))
-        parted -s "$disk" mkpart primary linux-swap 2048MiB "${swap_end_mib}MiB"
+        sgdisk -n2:2048MiB:"${swap_end_mib}MiB" -t2:8200 "$disk"
         part2="${disk}2"
-        parted -s "$disk" mkpart primary btrfs "${swap_end_mib}MiB" 100%
+
+        sgdisk -n3:"${swap_end_mib}MiB":0 -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
     else
-        parted -s "$disk" mkpart primary btrfs 2048MiB 100%
+        sgdisk -n2:2048MiB:0 -t2:8300 "$disk"
         part2="${disk}2"
         btrfs_part="$part2"
     fi
@@ -91,7 +90,6 @@ partition_disk() {
     sleep 1
 }
 
-# Format partitions chosen
 format_partitions() {
     echo "Formatting EFI partition..."
     mkfs.fat -F32 -n EFI "$part1"
@@ -102,7 +100,7 @@ format_partitions() {
         swapon "$part2"
     fi
 
-    echo "Formatting Btrfs..."
+    echo "Formatting Btrfs partition..."
     mkfs.btrfs -f -L ARCH "$btrfs_part"
 }
 
