@@ -49,11 +49,11 @@ cleanup_disk() {
 # Option to enable swap use
 set_swap() {
     mem_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
-    mem_mib=$(( (mem_kb + 1023) / 1024 ))
-    echo "Detected system RAM: ${mem_mib} MiB"
+    mem_gib=$(( ( ( (mem_kb + 512) / 1024 ) + 512 ) / 1024 ))
+    echo "Detected system RAM: ${mem_gib} GiB"
 
     echo
-    echo "Enable swap equal to RAM (${mem_mib} MiB)? (y/N)"
+    echo "Enable swap equal to RAM (${mem_gib} GB)? (y/N)"
     read -r use_swap_raw
     if [[ "${use_swap_raw,,}" == "y" ]]; then
         use_swap="yes"
@@ -68,20 +68,18 @@ partition_disk() {
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
     echo "Creating partitions with sgdisk..."
-    sgdisk -n1:1MiB:2048MiB -t1:EF00 "$disk"
+    sgdisk -n 1:0:2G -t1:EF00 "$disk"
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
-    
-        swap_end_mib=$((2048 + mem_mib))
-        sgdisk -n2:2048MiB:"${swap_end_mib}MiB" -t2:8200 "$disk"
+        sgdisk -n 2:0:"${mem_gib}G" -t2:8200 "$disk"
         part2="${disk}2"
 
-        sgdisk -n3:"${swap_end_mib}MiB":0 -t3:8300 "$disk"
+        sgdisk -n 3:0:0 -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
     else
-        sgdisk -n2:2048MiB:0 -t2:8300 "$disk"
+        sgdisk -n 2:0:0 -t2:8300 "$disk"
         part2="${disk}2"
         btrfs_part="$part2"
     fi
@@ -132,33 +130,21 @@ subvolumes() {
 }
 
 run_pacstrap() {
-    base_pkgs="base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
+    microcode_pkg=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}' | \
+        sed -e 's/^GenuineIntel$/intel-ucode/' -e 's/^AuthenticAMD$/amd-ucode/')
+    
+    if [[ -z "$microcode_pkg" ]]; then
+        echo "Unknown CPU vendor, installing both intel-ucode and amd-ucode."
+        microcode_pkg="intel-ucode amd-ucode"
+    fi
+    
+    base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
+    echo "Any extra packages to install with pacstrap? (space-separated, or leave empty):"
+    read -r extra_packages
 
-    while true; do
-        echo
-        echo "Any extra packages to install with pacstrap? (space-separated, or press Enter to skip):"
-        read -r extra_packages
-        
-        [[ -z "${extra_packages// }" ]] && break
-        
-        invalid_pkg=""
-
-        for pkg in $extra_packages; do
-            [[ -z "$pkg" ]] && continue
-            if ! pacman -Si "$pkg" &>/dev/null; then
-                invalid_pkg="$invalid_pkg $pkg"
-            fi
-        done
-
-        if [[ -n "$invalid_pkg" ]]; then
-            echo
-            echo "The following packages are invalid or not found in the repositories:$invalid_pkg"
-            echo "Please try again or press Enter to skip extra packages."
-        else
-            base_pkgs="$base_pkgs $extra_packages"
-            break
-        fi
-    done
+    if [[ -n "${extra_packages// }" ]]; then
+        base_pkgs="$base_pkgs $extra_packages"
+    fi
 
     echo
     echo "Installing packages: $base_pkgs"
@@ -287,14 +273,16 @@ finalize_install() {
     cp -- "$0" /mnt/root/arch-install.sh
     chmod +x /mnt/root/arch-install.sh
     echo
-    read -rp "Proceed to enter chroot? (N/y): " final_go
+    echo "Proceed to enter chroot? (N/y): " 
+    read -r final_go
 
-    if [[ "${final_go,,}" == "y" ]]; then
-        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup); chroot_setup"
+    if [[ "$final_go" == "y" || "$final_go" == "Y" ]]; then
+        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_serup); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
-        read -rp "Reboot system now? (N/y): " reboot_answer
+        echo "Reboot system now? (N/y): "
+        read -r reboot_answer
         
         if [[ "${reboot_answer,,}" == "y" ]]; then
             umount -R /mnt
@@ -314,7 +302,8 @@ main() {
     [[ $EUID -eq 0 ]] || { echo "Must be run as root."; exit 1; }
     echo "WARNING: This WILL DESTROY ALL DATA on the selected disk."
     echo
-    read -rp "Proceed with installation? (N/y): " answer
+    echo "Proceed with installation? (N/y): " answer
+    read -r answer
     [[ "${answer,,}" == "y" ]] || { echo "Aborted."; exit 1; }
 
     choose_disk
