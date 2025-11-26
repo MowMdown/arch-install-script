@@ -48,7 +48,7 @@ post_chroot_setup() {
     echo "LANG=en_US.UTF-8" > /etc/locale.conf
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
-    ln -sf /usr/share/zoneinfo/America/New-York /etc/localtime
+    ln -sf /usr/share/zoneinfo/America/New_York /etc/localtime
     hwclock --systohc
 
 
@@ -94,14 +94,9 @@ post_chroot_setup() {
 
     # Enable basic services
     systemctl enable fstrim.timer
-    
-    pacman -S --noconfirm networkmanager
     systemctl enable NetworkManager.service
-
-    pacman -S --noconfirm reflector
     systemctl enable reflector.service
 
-    pacman -S --noconfirm limine
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
@@ -121,15 +116,13 @@ post_chroot_setup() {
         swapon -a
     fi
     
-    # Enable ZRAM
-    pacman -S --noconfirm zram-generator
     echo "[zram0]" >> /etc/systemd/zram-generator.conf
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
     echo
     echo "Post-chroot configuration complete!"
-    sleep 5
+    sleep 1
 }
 
 # ---------- start ----------
