@@ -45,15 +45,12 @@ cleanup_disk() {
     fi
 
     echo "Checking for swap partitions on $disk..."
-    for part in $(lsblk -lnpo NAME "$disk"); do
-        if [[ "$part" == "$disk" ]]; then
-            continue
-        fi
-        if lsblk -no MOUNTPOINT "$part" | grep -q '\[SWAP\]'; then
-            echo "$part is a swap partition, turning off swap..."
-            swapoff "$part" || true
-        fi
-    done
+    if lsblk -no MOUNTPOINT "$part" | grep -q '\[SWAP\]'; then
+        echo "$part is a swap partition, turning off swap..."
+        swapoff "$part" || true
+    else
+        echo "[SWAP] is not mounted, nothing to do."
+    fi
 }
 
 bytes_to_mib() {
