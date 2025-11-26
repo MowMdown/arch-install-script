@@ -103,7 +103,7 @@ post_chroot_setup() {
     done
 
     pacman -Syu
-    pacman -S --noconfirm sudo
+
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
     systemctl enable fstrim.timer
