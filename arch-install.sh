@@ -1,136 +1,114 @@
 #!/usr/bin/env bash
-# Usage: run as root inside an Arch install/live environment.
 set -euo pipefail
 
-# ---------- Helper Functions ----------
+# ================================================================
+# Functions
+# ================================================================
+
 confirm() {
-    local msg="$1"
-    echo -e "\n>>> $msg"
-    echo "Type YES to proceed, anything else to abort:"
-    read -r answer
-    [[ "$answer" != "YES" ]] && { echo "Aborted by user."; exit 1; }
+  local msg="$1"
+  echo
+  echo ">>> $msg"
+  echo "Type YES to proceed, anything else to abort:"
+  read -r answer
+  [[ "$answer" == "YES" ]] || { echo "Aborted."; exit 1; }
 }
 
 choose_disk() {
-    echo "Available disks:"
-    lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1
-    echo -e "\nEnter the line number of the disk to use (will be wiped):"
-    read -r line
-    disk=$(lsblk -dpno NAME | sed -n "${line}p")
-    [[ -z "$disk" ]] && { echo "Invalid selection."; exit 1; }
-    echo "Selected disk: $disk"
+  echo "Available disks:"
+  lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1
+  echo
+  echo "Enter the line number of the disk to use (will be wiped):"
+  read -r line
+  disk=$(lsblk -dpno NAME | sed -n "${line}p")
+  [[ -n "$disk" ]] || { echo "Invalid selection."; exit 1; }
+  echo "Selected disk: $disk"
 }
 
-get_ram_mib() {
-    awk '/MemTotal:/ {print int(($2 + 1023)/1024)}' /proc/meminfo
-}
+cleanup_disk() {
+  echo "Unmounting /mnt before proceeding..."
+  if mountpoint -q /mnt; then
+    echo "/mnt is currently mounted, unmounting..."
+    umount -R /mnt || true
+    sleep 2
+  else
+    echo "/mnt is not mounted, nothing to do."
+  fi
 
-wipe_and_partition_disk() {
-    local disk="$1"
-    local use_swap="$2"
-    local mem_mib="$3"
-
-    mapfile -t mounted < <(lsblk -lnpo NAME,MOUNTPOINT "$disk" | awk '$2!="" {print $1}')
-    for p in "${mounted[@]}"; do umount "$p" || true; done
-    sgdisk --zap-all "$disk" || true
-    wipefs -a "$disk" || true
-    parted -s "$disk" mklabel gpt
-
-    local disk_mib efi_mib
-    disk_mib=$(parted -sm "$disk" unit MiB print | awk -F: '/^/ {print $2}' | head -n1)
-    efi_mib=$(( disk_mib < 65536 ? 512 : disk_mib < 262144 ? 1024 : 2048 ))
-    local efi_end=$((efi_mib + 1))
-    local next_start=$efi_end
-
-    parted -s "$disk" mkpart primary fat32 1MiB "${efi_end}MiB"
-    parted -s "$disk" set 1 boot on
-    part1="${disk}1"
-
-    if [[ "$use_swap" == "yes" ]]; then
-        swap_gib=$(( (mem_mib + 1023)/1024 ))
-        swap_mib=$(( swap_gib * 1024 ))
-        swap_end=$((next_start + swap_mib))
-        parted -s "$disk" mkpart primary linux-swap "${next_start}MiB" "${swap_end}MiB"
-        part2="${disk}2"
-        parted -s "$disk" mkpart primary btrfs "${swap_end}MiB" 100%
-        part3="${disk}3"
-        btrfs_part="$part3"
-    else
-        parted -s "$disk" mkpart primary btrfs "${next_start}MiB" 100%
-        part2="${disk}2"
-        btrfs_part="$part2"
+  echo "Checking for swap partitions on $disk..."
+  
+  for part in $(lsblk -lnpo NAME "$disk"); do
+    if [[ "$part" == "$disk" ]]; then
+      continue
     fi
-
-    partprobe "$disk" || true
-    sleep 1
-
-    mkfs.fat -F32 -n EFI "$part1"
-    [[ "$use_swap" == "yes" ]] && { mkswap -L SWAP "$part2"; swapon "$part2"; }
-    mkfs.btrfs -f -L ARCH "$btrfs_part"
-    echo "$part1" "$btrfs_part"
-}
-
-create_btrfs_subvolumes() {
-    local btrfs_part="$1"
-    mount -o subvolid=5 "$btrfs_part" /mnt
-    for sv in @ @home @cache @tmp @log @snapshots; do btrfs subvolume create "/mnt/$sv"; done
-    sync; umount -R /mnt
-
-    mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
-    mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
-
-    declare -A subvolumes=( ["home"]="@home" ["var/cache/pacman/pkg"]="@cache" ["var/tmp"]="@tmp" ["var/log"]="@log" [".snapshots"]="@snapshots" )
-    for dir in "${!subvolumes[@]}"; do
-        mount -o compress=zstd,noatime,subvol=${subvolumes[$dir]} "$btrfs_part" "/mnt/$dir"
-    done
-}
-
-mount_efi() { mount --mkdir "$1" /mnt/boot; }
-
-install_base_system() {
-    read -rp "Extra packages for pacstrap (space-separated)? " extra_packages
-    confirm "Proceed to pacstrap base system to /mnt?"
-    local cpu_vendor microcode_pkg
-    cpu_vendor=$(lscpu | awk '/Vendor ID/ {print $3}')
-    microcode_pkg=$([[ "$cpu_vendor" == "AuthenticAMD" ]] && echo "amd-ucode" || [[ "$cpu_vendor" == "GenuineIntel" ]] && echo "intel-ucode" || echo "amd-ucode intel-ucode")
-    base_pkgs="base base-devel linux linux-firmware sof-firmware $microcode_pkg limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
-    [[ -n "${extra_packages// }" ]] && base_pkgs="$base_pkgs $extra_packages"
-
-    echo "Installing base system with packages: $base_pkgs"
-    pacstrap -K /mnt $base_pkgs
     
-    genfstab -L /mnt > /mnt/etc/fstab
+    if lsblk -no MOUNTPOINT "$part" | grep -q '\[SWAP\]'; then
+      echo "$part is a swap partition, turning off swap..."
+      swapoff "$part" || true
+    fi
+  done
+}
+
+bytes_to_mib() {
+  awk "BEGIN{printf \"%d\", ($1/1024/1024)+0.5}"
 }
 
 post_chroot_setup() {
-    read -p "Enter locale (e.g., en_US.UTF-8): " locale_gen
-    read -p "Enter timezone (e.g., Europe/London): " timezone_loc
-    echo "$locale_gen UTF-8" > /etc/locale.gen; locale-gen
-    echo "LANG=${locale_gen%%.*}.UTF-8" > /etc/locale.conf
+    echo "=== Starting post-chroot configuration ==="
+
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+    locale-gen
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
-    ln -sf /usr/share/zoneinfo/"$timezone_loc" /etc/localtime; hwclock --systohc
-    while true; do
-        read -s -p "Root password: " root_pass; echo
-        read -s -p "Confirm: " root_pass_confirm; echo
-        [[ "$root_pass" == "$root_pass_confirm" ]] && break
-        echo "Passwords do not match."
-    done
-    echo "root:$root_pass" | chpasswd
-    read -p "Username for new user: " username    
-    while true; do
-        read -s -p "Password for $username: " user_pass; echo
-        read -s -p "Confirm: " user_pass_confirm; echo
-        [[ "$user_pass" == "$user_pass_confirm" ]] && break
-        echo "Passwords do not match."
-    done
-    useradd -m -G wheel "$username"
-    echo "$username:$user_pass" | chpasswd
-    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    ln -sf /usr/share/zoneinfo/America/New-York /etc/localtime
+    hwclock --systohc
 
+    while true; do
+        read -s -p "Enter new root password: " root_pass
+        echo
+        read -s -p "Confirm root password: " root_pass_confirm
+        echo
+        if [ "$root_pass" = "$root_pass_confirm" ]; then
+            echo "root:$root_pass" | chpasswd
+            echo "Root password set successfully."
+            break
+        else
+            echo "Passwords do not match. Please try again."
+        fi
+    done
+
+    read -p "Enter username for new user: " username
+    
+    while true; do
+        read -s -p "Enter password for user '$username': " user_pass
+        echo
+        read -s -p "Confirm password for user '$username': " user_pass_confirm
+        echo
+        if [ "$user_pass" = "$user_pass_confirm" ]; then
+            useradd -m -G wheel -s /bin/bash "$username"
+            echo "$username:$user_pass" | chpasswd
+            echo "User '$username' created successfully."
+            break
+        else
+            echo "Passwords do not match. Please try again."
+        fi
+    done
+
+    # Update packages
     pacman -Syu
     
-    systemctl enable fstrim.timer NetworkManager.service reflector.service
+    # Enable sudo for wheel group
+    pacman -S --noconfirm sudo
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+
+    # Enable basic services
+    systemctl enable fstrim.timer
+    systemctl enable NetworkManager.service
+    systemctl enable reflector.service
+
+    mkdir -p /boot/EFI/BOOT
+    cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
     echo "timeout: 5" > /boot/limine.conf
     echo "default_entry: 1" >> /boot/limine.conf
@@ -141,48 +119,189 @@ post_chroot_setup() {
     echo "    module_path: boot():/initramfs-linux.img" >> /boot/limine.conf
     echo "    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw" >> /boot/limine.conf
 
-    [[ $(grep -c "SWAP" /etc/fstab) -gt 0 ]] && swapon -a
+    echo "Created /boot/limine.conf"
 
+    # Enable swap if present
+    if grep -q "SWAP" /etc/fstab; then
+        swapon -a
+    fi
+    
     echo "[zram0]" >> /etc/systemd/zram-generator.conf
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
+
+    echo
+    echo "Post-chroot configuration complete!"
+    sleep 5
 }
 
-# ---------- Main Flow ----------
-[[ $EUID -ne 0 ]] && { echo "Run as root."; exit 1; }
-echo "=== Arch automated installer with Btrfs subvolumes ==="
-echo "WARNING: This script WILL DESTROY data on the selected disk."
+set_swap() {
+  mem_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
+  mem_mib=$(( (mem_kb + 1023) / 1024 ))
+  echo "Detected system RAM: ${mem_mib} MiB"
 
-choose_disk
-mem_mib=$(get_ram_mib)
-echo "Detected system RAM: ${mem_mib} MiB"
+  echo
+  echo "Enable swap equal to RAM (${mem_mib} MiB)? (y/N)"
+  read -r use_swap_raw
+  if [[ "$use_swap_raw" =~ ^[Yy] ]]; then
+    use_swap="yes"
+  else
+    use_swap="no"
+  fi
+}
 
-echo ""
-echo "Do you want to enable a swap partition equal to RAM (${mem_mib} MiB)? (y/N)"
-read -r use_swap_raw
-use_swap="no"
-[[ "$use_swap_raw" =~ ^[Yy] ]] && use_swap="yes"
+partition_disk() {
+  echo "Wiping partition table and signatures ..."
+  sgdisk --zap-all "$disk" || true
+  wipefs -a "$disk" || true
 
-confirm "Proceed with disk partitioning?"
-parts=($(wipe_and_partition_disk "$disk" "$use_swap" "$mem_mib"))
-part1="${parts[0]}"; btrfs_part="${parts[1]}"
+  echo "Creating partitions..."
+  parted -s "$disk" mklabel gpt
 
-create_btrfs_subvolumes "$btrfs_part"
-mount_efi "$part1"
+  parted -s "$disk" mkpart primary fat32 1MiB 2048MiB
+  parted -s "$disk" set 1 boot on
+  part1="${disk}1"
 
-install_base_system
+  if [[ "$use_swap" == "yes" ]]; then
+    swap_end_mib=$((2048 + mem_mib))
+    parted -s "$disk" mkpart primary linux-swap 2048MiB "${swap_end_mib}MiB"
+    part2="${disk}2"
 
-mkdir -p /mnt/root
-cp -- "$0" /mnt/root/arch-install-automated.sh
-chmod +x /mnt/root/arch-install-automated.sh
+    parted -s "$disk" mkpart primary btrfs "${swap_end_mib}MiB" 100%
+    part3="${disk}3"
+    btrfs_part="$part3"
+  else
+    parted -s "$disk" mkpart primary btrfs 2048MiB 100%
+    part2="${disk}2"
+    btrfs_part="$part2"
+  fi
 
-read -rp "Type YES to enter chroot and finish configuration: " final_go
-if [[ "$final_go" == "YES" ]]; then
+  partprobe "$disk" || true
+  sleep 1
+}
+
+format_partitions() {
+  echo "Formatting EFI partition..."
+  mkfs.fat -F32 -n EFI "$part1"
+
+  if [[ "$use_swap" == "yes" ]]; then
+    echo "Creating swap..."
+    mkswap -L SWAP "$part2"
+    swapon "$part2"
+  fi
+
+  echo "Formatting Btrfs..."
+  mkfs.btrfs -f -L ARCH "$btrfs_part"
+}
+
+create_subvolumes() {
+  mount -o subvolid=5 "$btrfs_part" /mnt
+
+  for sv in @ @home @cache @tmp @log @snapshots; do
+    btrfs subvolume create "/mnt/$sv"
+  done
+
+  sync
+  umount -R /mnt
+}
+
+mount_subvolumes() {
+  echo "Mounting root..."
+  mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
+
+  mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
+  echo "Mounting subvolumes..."
+  mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
+  mount -o compress=zstd,noatime,subvol=@cache "$btrfs_part" /mnt/var/cache/pacman/pkg
+  mount -o compress=zstd,noatime,subvol=@tmp "$btrfs_part" /mnt/var/tmp
+  mount -o compress=zstd,noatime,subvol=@log "$btrfs_part" /mnt/var/log
+  mount -o compress=zstd,noatime,subvol=@snapshots "$btrfs_part" /mnt/.snapshots
+
+  mkdir -p /mnt/boot
+  mount "$part1" /mnt/boot
+}
+
+run_pacstrap() {
+  base_pkgs="base base-devel linux linux-firmware sof-firmware amd-ucode intel-ucode limine sudo nano git networkmanager btrfs-progs reflector zram-generator"
+
+  echo "Any extra packages to install with pacstrap? (space-separated, or leave empty):"
+  read -r extra_packages
+
+  if [[ -n "${extra_packages// }" ]]; then
+    base_pkgs="$base_pkgs $extra_packages"
+  fi
+
+  confirm "Proceed to pacstrap base system to /mnt?"
+  pacstrap -K /mnt $base_pkgs
+
+  genfstab -L /mnt > /mnt/etc/fstab
+}
+
+finalize_install() {
+  echo "Copying script into new system..."
+  mkdir -p /mnt/root
+  cp -- "$0" /mnt/root/arch-install-automated.sh
+  chmod +x /mnt/root/arch-install-automated.sh
+
+  echo
+  echo "Type YES to enter chroot:"
+  read -r final_go
+
+  if [[ "$final_go" == "YES" ]]; then
     arch-chroot /mnt /bin/bash -c "$(declare -f post_chroot_setup); post_chroot_setup"
-    efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
+
+    echo
+    echo "Adding EFI Bootloader Entry"
+    efibootmgr \
+      --create \
+      --disk "$disk" \
+      --part 1 \
+      --label "Arch Linux Limine Bootloader" \
+      --loader '\EFI\BOOT\BOOTX64.EFI' \
+      --unicode
+
     confirm "Reboot now?"
     umount -R /mnt
-    echo "Reboot your system."
-else
-    echo "System mounted under /mnt; remember to chroot later."
-fi
+    reboot
+  else
+    echo "Exiting. System is mounted at /mnt."
+    exit 0
+  fi
+}
+
+# ================================================================
+# Main Workflow
+# ================================================================
+
+main() {
+  [[ $EUID -eq 0 ]] || { echo "Must be run as root."; exit 1; }
+
+  echo "=== Arch automated installation script ==="
+  echo "WARNING: This WILL DESTROY ALL DATA on the selected disk."
+
+  choose_disk
+  set_swap
+
+  echo
+  echo "We will create the following on ${disk}:"
+  echo "  1) EFI partition (2 GiB)"
+  if [[ "$use_swap" == "yes" ]]; then
+    echo "  2) swap (${mem_mib} MiB)"
+    echo "  3) Btrfs"
+  else
+    echo "  2) Btrfs"
+  fi
+
+  confirm "Proceed with partitioning?"
+
+  cleanup_disk
+  partition_disk
+  format_partitions
+  create_subvolumes
+  mount_subvolumes
+  run_pacstrap
+  finalize_install
+}
+
+main "$@"
+
