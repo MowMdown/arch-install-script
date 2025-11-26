@@ -167,16 +167,48 @@ run_pacstrap() {
     echo "Package installation complete..."
 }
 
-post_chroot_setup() {
-    echo "=== Starting post-chroot configuration ==="
-    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+configure_locale_timezone() {
+    while true; do
+        read -rp "Enter your locale (e.g., en_US): " user_locale
+        if [[ "$user_locale" =~ ^[a-zA-Z]{2}_[a-zA-Z]{2}$ ]]; then
+            full_locale="${user_locale}.UTF-8"
+            echo "Selected locale: $full_locale"
+            break
+        else
+            echo "Invalid format. Example: en_US"
+        fi
+    done
+
+    if grep -q "^#\s*${full_locale} UTF-8" /etc/locale.gen; then
+        sed -i "s|^#\s*\(${full_locale} UTF-8.*\)|\1|" /etc/locale.gen
+        echo "Uncommented $full_locale in /etc/locale.gen"
+    else
+        echo "$full_locale UTF-8" >> /etc/locale.gen
+        echo "Added $full_locale to /etc/locale.gen"
+    fi
+
+
     locale-gen
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+    echo "LANG=${full_locale}" > /etc/locale.conf
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
-    ln -sf /usr/share/zoneinfo/America/New_York /etc/localtime
-    hwclock --systohc
 
+    while true; do
+        read -rp "Enter your timezone (e.g., America/New_York, Europe/London): " user_timezone
+        if [[ -f "/usr/share/zoneinfo/$user_timezone" ]]; then
+            ln -sf "/usr/share/zoneinfo/$user_timezone" /etc/localtime
+            hwclock --systohc
+            echo "Timezone set to $user_timezone"
+            break
+        else
+            echo "Invalid timezone. Make sure it exists in /usr/share/zoneinfo."
+        fi
+    done
+    
+    echo "Locale and timezone configured successfully!"
+}
+
+user_setup() {
     while true; do
         read -s -p "Enter new root password: " root_pass
         echo
@@ -192,7 +224,6 @@ post_chroot_setup() {
     done
 
     read -p "Enter username for new user: " username
-
     while true; do
         read -s -p "Enter password for user '$username': " user_pass
         echo
@@ -207,8 +238,13 @@ post_chroot_setup() {
             echo "Passwords do not match. Please try again."
         fi
     done
+    }
 
-    pacman -Syu
+chroot_setup() {
+    pacman -Syu --noconfirm
+
+    configure_locale_timezone
+    user_setup    
 
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
@@ -254,7 +290,7 @@ finalize_install() {
     read -rp "Proceed to enter chroot? (N/y): " final_go
 
     if [[ "${final_go,,}" == "y" ]]; then
-        arch-chroot /mnt /bin/bash -c "$(declare -f post_chroot_setup); post_chroot_setup"
+        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
@@ -288,6 +324,7 @@ main() {
     format_partitions
     subvolumes
     run_pacstrap
+    chroot_setup
     finalize_install
 }
 
