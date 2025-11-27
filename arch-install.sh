@@ -6,8 +6,7 @@ choose_disk() {
     while true; do
         echo "Available disks:"
         lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
-        echo -n "Enter the line number of the disk to use (will be wiped): "
-        read -r line
+        read -rp "Enter the line number of the disk to use (will be wiped): " line
         
         if ! [[ "$line" =~ ^[0-9]+$ ]]; then
             echo "Error: Input must be a number."
@@ -48,17 +47,26 @@ cleanup_disk() {
 
 # Option to enable swap use
 set_swap() {
-    mem_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
-    mem_gib=$(( ( ( (mem_kb + 512) / 1024 ) + 512 ) / 1024 ))
-    echo "Detected system RAM: ${mem_gib} GiB"
-
     echo
-    echo "Enable swap equal to RAM (${mem_gib} GB)? (y/N)"
-    read -r use_swap_raw
+    read -rp "Do you want to enable swap? (y/N): " use_swap_raw
+
     if [[ "${use_swap_raw,,}" == "y" ]]; then
         use_swap="yes"
+        
+        while true; do
+            read -rp "Enter the swap size in GiB (whole numbers only): " mem_gib
+
+            if [[ "$mem_gib" =~ ^[0-9]+$ ]] && [ "$mem_gib" -gt 0 ]; then
+                break
+            else
+                echo "Invalid input. Please enter a positive whole number."
+            fi
+        done
+
+        echo "Swap will be set to ${mem_gib} GiB."
     else
         use_swap="no"
+        echo "Swap will not be enabled."
     fi
 }
 
@@ -72,7 +80,7 @@ partition_disk() {
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
-        sgdisk -n 2:0:"${mem_gib}G" -t2:8200 "$disk"
+        sgdisk -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
         part2="${disk}2"
 
         sgdisk -n 3:0:0 -t3:8300 "$disk"
@@ -156,6 +164,7 @@ run_pacstrap() {
 configure_locale_timezone() {
     while true; do
         read -rp "Enter your locale (e.g., en_US): " user_locale
+        
         if [[ "$user_locale" =~ ^[a-zA-Z]{2}_[a-zA-Z]{2}$ ]]; then
             full_locale="${user_locale}.UTF-8"
             echo "Selected locale: $full_locale"
@@ -173,25 +182,23 @@ configure_locale_timezone() {
         echo "Added $full_locale to /etc/locale.gen"
     fi
 
-
     locale-gen
     echo "LANG=${full_locale}" > /etc/locale.conf
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
 
     while true; do
-        read -rp "Enter your timezone (e.g., America/New_York, Europe/London): " user_timezone
-        if [[ -f "/usr/share/zoneinfo/$user_timezone" ]]; then
-            ln -sf "/usr/share/zoneinfo/$user_timezone" /etc/localtime
+        read -rp "Enter your timezone (e.g., America/New_York, Europe/London): " timezone
+        
+        if [[ -f "/usr/share/zoneinfo/$timezone" ]]; then
+            ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
             hwclock --systohc
-            echo "Timezone set to $user_timezone"
+            echo "Timezone set to $timezone"
             break
         else
             echo "Invalid timezone. Make sure it exists in /usr/share/zoneinfo."
         fi
     done
-    
-    echo "Locale and timezone configured successfully!"
 }
 
 user_setup() {
@@ -218,7 +225,7 @@ user_setup() {
         if [ "$user_pass" = "$user_pass_confirm" ]; then
             useradd -m -G wheel -s /bin/bash "$username"
             echo "$username:$user_pass" | chpasswd
-            echo "User '$username' created successfully."
+            echo "User '$username' created successfully and has been added to wheel group for root privileges..."
             break
         else
             echo "Passwords do not match. Please try again."
@@ -268,21 +275,21 @@ chroot_setup() {
 finalize_install() {
     echo "Generating /etc/fstab..."
     genfstab -L /mnt > /mnt/etc/fstab
+    
     echo "Copying script into new root..."
     mkdir -p /mnt/root
     cp -- "$0" /mnt/root/arch-install.sh
     chmod +x /mnt/root/arch-install.sh
     echo
-    echo "Proceed to enter chroot? (N/y): " 
-    read -r final_go
+    
+    read -rp "Proceed to enter chroot? (y/N): " final_go
 
     if [[ "$final_go" == "y" || "$final_go" == "Y" ]]; then
         arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
-        echo "Reboot system now? (N/y): "
-        read -r reboot_answer
+        read -rp "Reboot system now? (y/N): " reboot_answer
         
         if [[ "${reboot_answer,,}" == "y" ]]; then
             umount -R /mnt
@@ -302,8 +309,8 @@ main() {
     [[ $EUID -eq 0 ]] || { echo "Must be run as root."; exit 1; }
     echo "WARNING: This WILL DESTROY ALL DATA on the selected disk."
     echo
-    echo "Proceed with installation? (N/y): " answer
-    read -r answer
+    read -rp "Proceed with installation? (y/N): " answer
+
     [[ "${answer,,}" == "y" ]] || { echo "Aborted."; exit 1; }
 
     choose_disk
