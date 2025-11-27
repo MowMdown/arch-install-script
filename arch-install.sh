@@ -240,7 +240,7 @@ chroot_setup() {
 
     if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
         echo "Installing desktop packages..."
-        pacman -S --noconfirm plasma-meta dolphin konsole firefox
+        pacman -S --noconfirm plasma-meta sddm dolphin konsole firefox
         echo
         echo " Enabling sddm..."
         systemctl enable sddm.service
