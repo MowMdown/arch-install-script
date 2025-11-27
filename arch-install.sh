@@ -235,6 +235,18 @@ user_setup() {
 
 chroot_setup() {
     pacman -Syu --noconfirm
+    
+    read -rp "Do you want to install desktop packages? (y/N) " install_desktop_pkgs
+
+    if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
+        echo "Installing desktop packages..."
+        pacman -S --noconfirm plasma-meta sddm dolphin kio-admin sddm-kcm firefox
+        echo
+        echo " Enabling sddm..."
+        systemctl enable sddm.service
+    else
+        echo "Skipping desktop package installation..."
+    fi
 
     configure_locale_timezone
     user_setup    
