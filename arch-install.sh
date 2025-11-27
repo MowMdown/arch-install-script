@@ -277,7 +277,7 @@ finalize_install() {
     read -r final_go
 
     if [[ "$final_go" == "y" || "$final_go" == "Y" ]]; then
-        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_serup); chroot_setup"
+        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
