@@ -159,11 +159,16 @@ run_pacstrap() {
 configure_locale_timezone() {
     while true; do
         read -rp "Enter your locale (e.g., en_US): " user_locale
-        
+
         if [[ "$user_locale" =~ ^[a-zA-Z]{2}_[a-zA-Z]{2}$ ]]; then
             full_locale="${user_locale}.UTF-8"
-            echo "Selected locale: $full_locale"
-            break
+            
+            if grep -qxF "$full_locale UTF-8" /usr/share/i18n/SUPPORTED; then
+                echo "Selected locale: $full_locale"
+                break
+            else
+                echo "Locale $full_locale UTF-8 is not supported. Check /usr/share/i18n/SUPPORTED."
+            fi
         else
             echo "Invalid format. Example: en_US"
         fi
@@ -172,13 +177,16 @@ configure_locale_timezone() {
     if grep -q "^#\s*${full_locale} UTF-8" /etc/locale.gen; then
         sed -i "s|^#\s*\(${full_locale} UTF-8.*\)|\1|" /etc/locale.gen
         echo "Uncommented $full_locale in /etc/locale.gen"
-    else
-        echo "$full_locale UTF-8" >> /etc/locale.gen
+    elif ! grep -q "^${full_locale} UTF-8" /etc/locale.gen; then
+        echo "${full_locale} UTF-8" >> /etc/locale.gen
         echo "Added $full_locale to /etc/locale.gen"
     fi
 
     locale-gen
     echo "LANG=${full_locale}" > /etc/locale.conf
+    export LANG="$full_locale"
+    echo "Locale set to $full_locale"
+
     echo "KEYMAP=us" > /etc/vconsole.conf
     echo "archlinux" > /etc/hostname
 
@@ -195,6 +203,7 @@ configure_locale_timezone() {
         fi
     done
 }
+
 
 user_setup() {
     while true; do
@@ -264,6 +273,11 @@ install_gpu_drivers() {
     has_nvidia=$(echo "$gpu_list" | grep -qi "NVIDIA"; echo $?)
     has_intel=$(echo "$gpu_list" | grep -qi "Intel"; echo $?)
 
+    if [[ $has_amd -ne 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
+        echo "No supported GPU detected (AMD, NVIDIA, Intel). Skipping GPU driver installation."
+        return 0
+    fi
+
     echo "Detected GPUs:"
     [[ $has_amd -eq 0 ]] && echo "  - AMD GPU detected"
     [[ $has_nvidia -eq 0 ]] && echo "  - NVIDIA GPU detected"
@@ -273,28 +287,32 @@ install_gpu_drivers() {
     echo "Installing appropriate drivers..."
     echo
 
+    amd_pkgs="mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
+    nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils"
+    intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
+    
     if [[ "$system_type" == "Desktop" ]]; then
-        [[ $has_amd -eq 0 ]] && sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader
-        [[ $has_nvidia -eq 0 ]] && sudo pacman -S --needed nvidia nvidia-utils nvidia-settings lib32-nvidia-utils
-        [[ $has_intel -eq 0 ]] && sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader
+        [[ $has_amd -eq 0 ]] && sudo pacman -S --needed $amd_pkgs
+        [[ $has_nvidia -eq 0 ]] && sudo pacman -S --needed $nvidia_pkgs
+        [[ $has_intel -eq 0 ]] && sudo pacman -S --needed $intel_pkgs
     fi
 
     if [[ "$system_type" == "Laptop" ]]; then
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
             echo "Intel + NVIDIA hybrid laptop detected (Optimus)."
-            sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel nvidia nvidia-utils lib32-nvidia-utils vulkan-icd-loader lib32-vulkan-icd-loader bbswitch nvidia-prime
+            sudo pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
         fi
         if [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
             echo "AMD + NVIDIA laptop detected."
-            sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon nvidia nvidia-utils lib32-nvidia-utils
+            sudo pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia_prime
         fi
         if [[ $has_intel -eq 0 && $has_nvidia -ne 0 && $has_amd -ne 0 ]]; then
             echo "Intel-only laptop detected."
-            sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader
+            sudo pacman -S --needed $intel_pkgs
         fi
         if [[ $has_amd -eq 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
             echo "AMD-only laptop detected."
-            sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader
+            sudo pacman -S --needed $amd_pkgs
         fi
     fi
 
@@ -304,8 +322,7 @@ install_gpu_drivers() {
 
 chroot_setup() {
 
-    sed -i 's/^#\[multilib\]/\[multilib\]/' /etc/pacman.conf
-    sed -i 's|^#Include = /etc/pacman.d/mirrorlist|Include = /etc/pacman.d/mirrorlist|' /etc/pacman.conf
+    sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf    
     pacman -Syu --noconfirm
   
     read -rp "Do you want to install KDE Plasma desktop packages? (y/N) " install_desktop_pkgs
