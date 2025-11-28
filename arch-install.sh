@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Select disk to partition and store global $disk variable
 choose_disk() {
     while true; do
         echo "Available disks:"
@@ -22,7 +21,6 @@ choose_disk() {
     done
 }
 
-# If disk selected is currently mounted or contains existing partitions, remove them
 cleanup_disk() {
     echo "Unmounting /mnt before proceeding..."
     if mountpoint -q /mnt; then
@@ -45,7 +43,6 @@ cleanup_disk() {
     done
 }
 
-# Option to enable swap use
 set_swap() {
     echo
     read -rp "Do you want to enable swap? (y/N): " use_swap_raw
@@ -70,7 +67,6 @@ set_swap() {
     fi
 }
 
-# Partition disk with selected disk and swap options
 partition_disk() {
     echo "Wiping partition table and signatures on $disk..."
     sgdisk --zap-all "$disk" || true
@@ -110,7 +106,6 @@ format_partitions() {
     mkfs.btrfs -f -L ARCH "$btrfs_part"
 }
 
-# Create and mount btrfs subvolumes to root btrfs partition
 subvolumes() {
     mount -o subvolid=5 "$btrfs_part" /mnt
     
@@ -232,11 +227,88 @@ user_setup() {
         fi
     done
     }
+    
+install_gpu_drivers() {
+    while true; do
+        echo "Is this system a:"
+        echo "  1) Desktop"
+        echo "  2) Laptop"
+        read -rp "Enter 1 or 2: " gpu_line
+
+        if ! [[ "$gpu_line" =~ ^[0-9]+$ ]]; then
+            echo "Error: Input must be a number."
+            continue
+        fi
+        
+        if [[ "$gpu_line" -eq 1 ]]; then
+            system_type="Desktop"
+            echo "Desktop selected."
+            break
+        elif [[ "$gpu_line" -eq 2 ]]; then
+            system_type="Laptop"
+            echo "Laptop selected."
+            break
+        else
+            echo "Invalid selection. Please enter 1 or 2."
+        fi
+    done
+
+    echo
+    echo "Detecting GPUs..."
+    gpu_list=$(lspci -nnk | grep -i "VGA\|3D")
+
+    echo "$gpu_list"
+    echo
+
+    has_amd=$(echo "$gpu_list" | grep -qi "AMD"; echo $?)
+    has_nvidia=$(echo "$gpu_list" | grep -qi "NVIDIA"; echo $?)
+    has_intel=$(echo "$gpu_list" | grep -qi "Intel"; echo $?)
+
+    echo "Detected GPUs:"
+    [[ $has_amd -eq 0 ]] && echo "  - AMD GPU detected"
+    [[ $has_nvidia -eq 0 ]] && echo "  - NVIDIA GPU detected"
+    [[ $has_intel -eq 0 ]] && echo "  - Intel GPU detected"
+    echo
+
+    echo "Installing appropriate drivers..."
+    echo
+
+    if [[ "$system_type" == "Desktop" ]]; then
+        [[ $has_amd -eq 0 ]] && sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader
+        [[ $has_nvidia -eq 0 ]] && sudo pacman -S --needed nvidia nvidia-utils nvidia-settings lib32-nvidia-utils
+        [[ $has_intel -eq 0 ]] && sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader
+    fi
+
+    if [[ "$system_type" == "Laptop" ]]; then
+        if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
+            echo "Intel + NVIDIA hybrid laptop detected (Optimus)."
+            sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel nvidia nvidia-utils lib32-nvidia-utils vulkan-icd-loader lib32-vulkan-icd-loader bbswitch nvidia-prime
+        fi
+        if [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
+            echo "AMD + NVIDIA laptop detected."
+            sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon nvidia nvidia-utils lib32-nvidia-utils
+        fi
+        if [[ $has_intel -eq 0 && $has_nvidia -ne 0 && $has_amd -ne 0 ]]; then
+            echo "Intel-only laptop detected."
+            sudo pacman -S --needed mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader
+        fi
+        if [[ $has_amd -eq 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
+            echo "AMD-only laptop detected."
+            sudo pacman -S --needed mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader
+        fi
+    fi
+
+    echo
+    echo "GPU driver installation complete."
+}
 
 chroot_setup() {
+
+    sed -i 's/^#\[multilib\]/\[multilib\]/' /etc/pacman.conf
+    sed -i 's|^#Include = /etc/pacman.d/mirrorlist|Include = /etc/pacman.d/mirrorlist|' /etc/pacman.conf
     pacman -Syu --noconfirm
-    
-    read -rp "Do you want to install desktop packages? (y/N) " install_desktop_pkgs
+  
+    read -rp "Do you want to install KDE Plasma desktop packages? (y/N) " install_desktop_pkgs
 
     if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
         echo "Installing desktop packages..."
@@ -245,9 +317,17 @@ chroot_setup() {
         echo " Enabling sddm..."
         systemctl enable sddm.service
     else
-        echo "Skipping desktop package installation..."
+        echo "Skipping KDE Plasma desktop package installation..."
     fi
 
+    read -rp "Do you want to install GPU drivers? (y/N) " install_gpu_driver_pkgs
+
+    if [[ "${install_gpu_driver_pkgs,,}" == "y" ]]; then
+        install_gpu_drivers
+    else
+        echo "Skipping GPU driver package installation..."
+    fi
+    
     configure_locale_timezone
     user_setup    
 
@@ -297,7 +377,7 @@ finalize_install() {
     read -rp "Proceed to enter chroot? (y/N): " final_go
 
     if [[ "$final_go" == "y" || "$final_go" == "Y" ]]; then
-        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup); chroot_setup"
+        arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup install_gpu_drivers); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
