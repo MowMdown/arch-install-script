@@ -6,11 +6,12 @@ choose_disk() {
         echo "Available disks:"
         lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
         read -rp "Enter the line number of the disk to use (will be wiped): " line
-        
+
         if ! [[ "$line" =~ ^[0-9]+$ ]]; then
             echo "Error: Input must be a number."
             continue
         fi
+
         disk=$(lsblk -dpno NAME | sed -n "${line}p")
         if [[ -n "$disk" ]]; then
             echo "Selected disk: $disk"
@@ -49,17 +50,14 @@ set_swap() {
 
     if [[ "${use_swap_raw,,}" == "y" ]]; then
         use_swap="yes"
-        
         while true; do
             read -rp "Enter the swap size in GiB (whole numbers only): " mem_gib
-
             if [[ "$mem_gib" =~ ^[0-9]+$ ]] && [ "$mem_gib" -gt 0 ]; then
                 break
             else
                 echo "Invalid input. Please enter a positive whole number."
             fi
         done
-
         echo "Swap will be set to ${mem_gib} GiB."
     else
         use_swap="no"
@@ -71,6 +69,7 @@ partition_disk() {
     echo "Wiping partition table and signatures on $disk..."
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
+
     echo "Creating partitions with sgdisk..."
     sgdisk -n 1:0:2G -t1:EF00 "$disk"
     part1="${disk}1"
@@ -78,7 +77,6 @@ partition_disk() {
     if [[ "$use_swap" == "yes" ]]; then
         sgdisk -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
         part2="${disk}2"
-
         sgdisk -n 3:0:0 -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
@@ -108,15 +106,15 @@ format_partitions() {
 
 subvolumes() {
     mount -o subvolid=5 "$btrfs_part" /mnt
-    
+
     for sv in @ @home @cache @tmp @log @snapshots; do
         btrfs subvolume create "/mnt/$sv"
     done
-    
+
     sync
     umount -R /mnt
     sleep 2
-    
+
     echo "Mounting root..."
     mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 
@@ -135,12 +133,12 @@ subvolumes() {
 run_pacstrap() {
     microcode_pkg=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}' | \
         sed -e 's/^GenuineIntel$/intel-ucode/' -e 's/^AuthenticAMD$/amd-ucode/')
-    
+
     if [[ -z "$microcode_pkg" ]]; then
         echo "Unknown CPU vendor, installing both intel-ucode and amd-ucode."
         microcode_pkg="intel-ucode amd-ucode"
     fi
-    
+
     base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
     echo "Any extra packages to install with pacstrap? (space-separated, or leave empty):"
     read -r extra_packages
@@ -159,15 +157,13 @@ run_pacstrap() {
 configure_locale_timezone() {
     while true; do
         read -rp "Enter your locale (e.g., en_US): " user_locale
-
         if [[ "$user_locale" =~ ^[a-zA-Z]{2}_[a-zA-Z]{2}$ ]]; then
             full_locale="${user_locale}.UTF-8"
-            
             if grep -qxF "$full_locale UTF-8" /usr/share/i18n/SUPPORTED; then
                 echo "Selected locale: $full_locale"
                 break
             else
-                echo "Locale $full_locale UTF-8 is not supported. Check /usr/share/i18n/SUPPORTED."
+                echo "Locale $full_locale UTF-8 is not supported."
             fi
         else
             echo "Invalid format. Example: en_US"
@@ -192,7 +188,6 @@ configure_locale_timezone() {
 
     while true; do
         read -rp "Enter your timezone (e.g., America/New_York, Europe/London): " timezone
-        
         if [[ -f "/usr/share/zoneinfo/$timezone" ]]; then
             ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
             hwclock --systohc
@@ -203,7 +198,6 @@ configure_locale_timezone() {
         fi
     done
 }
-
 
 user_setup() {
     while true; do
@@ -216,7 +210,7 @@ user_setup() {
             echo "Root password set successfully."
             break
         else
-            echo "Passwords do not match. Please try again."
+            echo "Passwords do not match. Try again."
         fi
     done
 
@@ -229,43 +223,37 @@ user_setup() {
         if [ "$user_pass" = "$user_pass_confirm" ]; then
             useradd -m -G wheel -s /bin/bash "$username"
             echo "$username:$user_pass" | chpasswd
-            echo "User '$username' created successfully and has been added to wheel group for root privileges..."
+            echo "User '$username' created and added to wheel group."
             break
         else
-            echo "Passwords do not match. Please try again."
+            echo "Passwords do not match. Try again."
         fi
     done
-    }
-    
+}
+
 install_gpu_drivers() {
     while true; do
         echo "Is this system a:"
         echo "  1) Desktop"
         echo "  2) Laptop"
         read -rp "Enter 1 or 2: " gpu_line
-
         if ! [[ "$gpu_line" =~ ^[0-9]+$ ]]; then
             echo "Error: Input must be a number."
             continue
         fi
-        
         if [[ "$gpu_line" -eq 1 ]]; then
             system_type="Desktop"
-            echo "Desktop selected."
             break
         elif [[ "$gpu_line" -eq 2 ]]; then
             system_type="Laptop"
-            echo "Laptop selected."
             break
         else
-            echo "Invalid selection. Please enter 1 or 2."
+            echo "Invalid selection. Enter 1 or 2."
         fi
     done
 
-    echo
     echo "Detecting GPUs..."
     gpu_list=$(lspci -nnk | grep -i "VGA\|3D")
-
     echo "$gpu_list"
     echo
 
@@ -274,85 +262,58 @@ install_gpu_drivers() {
     has_intel=$(echo "$gpu_list" | grep -qi "Intel"; echo $?)
 
     if [[ $has_amd -ne 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
-        echo "No supported GPU detected (AMD, NVIDIA, Intel). Skipping GPU driver installation."
+        echo "No supported GPU detected. Skipping GPU driver installation."
         return 0
     fi
 
-    echo "Detected GPUs:"
-    [[ $has_amd -eq 0 ]] && echo "  - AMD GPU detected"
-    [[ $has_nvidia -eq 0 ]] && echo "  - NVIDIA GPU detected"
-    [[ $has_intel -eq 0 ]] && echo "  - Intel GPU detected"
-    echo
-
-    echo "Installing appropriate drivers..."
-    echo
-
+    echo "Installing drivers..."
     amd_pkgs="mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
     nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils"
     intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
-    
+
     if [[ "$system_type" == "Desktop" ]]; then
-        [[ $has_amd -eq 0 ]] && sudo pacman -S --needed $amd_pkgs
-        [[ $has_nvidia -eq 0 ]] && sudo pacman -S --needed $nvidia_pkgs
-        [[ $has_intel -eq 0 ]] && sudo pacman -S --needed $intel_pkgs
+        [[ $has_amd -eq 0 ]] && pacman -S --needed $amd_pkgs
+        [[ $has_nvidia -eq 0 ]] && pacman -S --needed $nvidia_pkgs
+        [[ $has_intel -eq 0 ]] && pacman -S --needed $intel_pkgs
     fi
 
     if [[ "$system_type" == "Laptop" ]]; then
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
-            echo "Intel + NVIDIA hybrid laptop detected (Optimus)."
-            sudo pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
-        fi
-        if [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
-            echo "AMD + NVIDIA laptop detected."
-            sudo pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia_prime
-        fi
-        if [[ $has_intel -eq 0 && $has_nvidia -ne 0 && $has_amd -ne 0 ]]; then
-            echo "Intel-only laptop detected."
-            sudo pacman -S --needed $intel_pkgs
-        fi
-        if [[ $has_amd -eq 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
-            echo "AMD-only laptop detected."
-            sudo pacman -S --needed $amd_pkgs
+            pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
+        elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
+            pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia-prime
+        elif [[ $has_intel -eq 0 ]]; then
+            pacman -S --needed $intel_pkgs
+        elif [[ $has_amd -eq 0 ]]; then
+            pacman -S --needed $amd_pkgs
         fi
     fi
 
-    echo
     echo "GPU driver installation complete."
 }
 
 chroot_setup() {
-
-    sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf    
+    sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf
     pacman -Syu --noconfirm
-  
-    read -rp "Do you want to install KDE Plasma desktop packages? (y/N) " install_desktop_pkgs
 
+    read -rp "Install KDE Plasma desktop packages? (y/N) " install_desktop_pkgs
     if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
-        echo "Installing desktop packages..."
         pacman -S --noconfirm plasma-meta sddm dolphin konsole firefox
-        echo
-        echo " Enabling sddm..."
         systemctl enable sddm.service
-    else
-        echo "Skipping KDE Plasma desktop package installation..."
     fi
-
-    read -rp "Do you want to install GPU drivers? (y/N) " install_gpu_driver_pkgs
 
     if [[ "${install_gpu_driver_pkgs,,}" == "y" ]]; then
         install_gpu_drivers
     else
         echo "Skipping GPU driver package installation..."
     fi
-    
+
     configure_locale_timezone
-    user_setup    
+    user_setup
 
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-    systemctl enable fstrim.timer
-    systemctl enable NetworkManager.service
-    systemctl enable reflector.service
+    systemctl enable fstrim.timer NetworkManager.service reflector.service
 
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
@@ -366,8 +327,6 @@ chroot_setup() {
     echo "    module_path: boot():/initramfs-linux.img" >> /boot/limine.conf
     echo "    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw" >> /boot/limine.conf
 
-    echo "Created /boot/limine.conf"
-
     if grep -q "SWAP" /etc/fstab; then
         swapon -a
     fi
@@ -376,7 +335,6 @@ chroot_setup() {
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
-    echo
     echo "Post-chroot configuration complete!"
     sleep 1
 }
@@ -389,18 +347,16 @@ finalize_install() {
     mkdir -p /mnt/root
     cp -- "$0" /mnt/root/arch-install.sh
     chmod +x /mnt/root/arch-install.sh
-    echo
 
     read -rp "Skip chroot? (y/N): " skip_chroot
-
     if [[ "$skip_chroot" == "y" || "$skip_chroot" == "Y" ]]; then
         echo "Exiting. System is mounted at /mnt."
         exit 0
     else
         arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup install_gpu_drivers); chroot_setup"
+
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
-        echo
 
         read -rp "Reboot system now? (y/N): " reboot_answer
         if [[ "${reboot_answer,,}" == "y" ]]; then
@@ -414,9 +370,7 @@ finalize_install() {
 main() {
     [[ $EUID -eq 0 ]] || { echo "Must be run as root."; exit 1; }
     echo "WARNING: This WILL DESTROY ALL DATA on the selected disk."
-    echo
     read -rp "Proceed with installation? (y/N): " answer
-
     [[ "${answer,,}" == "y" ]] || { echo "Aborted."; exit 1; }
 
     choose_disk
