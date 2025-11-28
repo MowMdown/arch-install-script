@@ -237,21 +237,26 @@ install_gpu_drivers() {
         echo "  1) Desktop"
         echo "  2) Laptop"
         read -rp "Enter 1 or 2: " gpu_line
+
         if ! [[ "$gpu_line" =~ ^[0-9]+$ ]]; then
             echo "Error: Input must be a number."
             continue
         fi
+
         if [[ "$gpu_line" -eq 1 ]]; then
             system_type="Desktop"
+            echo "Desktop selected."
             break
         elif [[ "$gpu_line" -eq 2 ]]; then
             system_type="Laptop"
+            echo "Laptop selected."
             break
         else
-            echo "Invalid selection. Enter 1 or 2."
+            echo "Invalid selection. Please enter 1 or 2."
         fi
     done
 
+    echo
     echo "Detecting GPUs..."
     gpu_list=$(lspci -nnk | grep -i "VGA\|3D")
     echo "$gpu_list"
@@ -262,11 +267,17 @@ install_gpu_drivers() {
     has_intel=$(echo "$gpu_list" | grep -qi "Intel"; echo $?)
 
     if [[ $has_amd -ne 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
-        echo "No supported GPU detected. Skipping GPU driver installation."
+        echo "No supported GPU detected (AMD, NVIDIA, Intel). Skipping GPU driver installation."
         return 0
     fi
 
-    echo "Installing drivers..."
+    echo "Detected GPUs:"
+    [[ $has_amd -eq 0 ]] && echo "  - AMD GPU detected"
+    [[ $has_nvidia -eq 0 ]] && echo "  - NVIDIA GPU detected"
+    [[ $has_intel -eq 0 ]] && echo "  - Intel GPU detected"
+    echo
+
+    echo "Installing appropriate drivers..."
     amd_pkgs="mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
     nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils"
     intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
@@ -279,16 +290,21 @@ install_gpu_drivers() {
 
     if [[ "$system_type" == "Laptop" ]]; then
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
+            echo "Intel + NVIDIA hybrid laptop detected (Optimus)."
             pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
         elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
+            echo "AMD + NVIDIA hybrid laptop detected."
             pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia-prime
-        elif [[ $has_intel -eq 0 ]]; then
+        elif [[ $has_intel -eq 0 && $has_nvidia -ne 0 && $has_amd -ne 0 ]]; then
+            echo "Intel-only laptop detected."
             pacman -S --needed $intel_pkgs
-        elif [[ $has_amd -eq 0 ]]; then
+        elif [[ $has_amd -eq 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
+            echo "AMD-only laptop detected."
             pacman -S --needed $amd_pkgs
         fi
     fi
 
+    echo
     echo "GPU driver installation complete."
 }
 
