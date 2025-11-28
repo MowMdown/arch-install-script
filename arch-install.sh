@@ -318,6 +318,7 @@ chroot_setup() {
         systemctl enable sddm.service
     fi
 
+    read -rp "Do you want to install GPU drivers? (y/N) " install_gpu_driver_pkgs
     if [[ "${install_gpu_driver_pkgs,,}" == "y" ]]; then
         install_gpu_drivers
     else
