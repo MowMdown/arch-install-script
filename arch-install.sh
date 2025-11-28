@@ -384,33 +384,30 @@ chroot_setup() {
 finalize_install() {
     echo "Generating /etc/fstab..."
     genfstab -L /mnt > /mnt/etc/fstab
-    
+
     echo "Copying script into new root..."
     mkdir -p /mnt/root
     cp -- "$0" /mnt/root/arch-install.sh
     chmod +x /mnt/root/arch-install.sh
     echo
-    
-    read -rp "Proceed to enter chroot? (y/N): " final_go
 
-    if [[ "$final_go" == "y" || "$final_go" == "Y" ]]; then
+    read -rp "Skip chroot? (y/N): " skip_chroot
+
+    if [[ "$skip_chroot" == "y" || "$skip_chroot" == "Y" ]]; then
+        echo "Exiting. System is mounted at /mnt."
+        exit 0
+    else
         arch-chroot /mnt /bin/bash -c "$(declare -f chroot_setup configure_locale_timezone user_setup install_gpu_drivers); chroot_setup"
         echo "Adding EFI Bootloader Entry"
         efibootmgr --create --disk "$disk" --part 1 --label "Arch Linux Limine Bootloader" --loader '\EFI\BOOT\BOOTX64.EFI' --unicode
         echo
+
         read -rp "Reboot system now? (y/N): " reboot_answer
-        
         if [[ "${reboot_answer,,}" == "y" ]]; then
             umount -R /mnt
             sleep 2
             reboot
-        else
-            echo "Exiting. System is mounted at /mnt."
-            exit 0
         fi
-    else
-        echo "Exiting. System is mounted at /mnt."
-        exit 0
     fi
 }
 
