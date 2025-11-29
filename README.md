@@ -1,98 +1,167 @@
-# Arch Linux Automated Installer Script
+# Arch Linux Automated Installation Script
 
-**Filename:** `arch-install.sh`  
-**Environment:** Must be run as `root` inside an Arch Linux live environment.
+This repository contains an automated Arch Linux installation script designed to simplify and streamline the installation process while retaining full transparency and user control. The script prepares the disk, configures the filesystem using Btrfs subvolumes, installs the base system, configures the environment inside the new installation, and optionally installs GPU drivers and KDE Plasma.
 
----
-
-## Overview
-
-This script automates the installation of Arch Linux on a target disk. It handles disk partitioning, formatting, Btrfs subvolume creation, base system installation, and post-install configuration, including user creation, locale, services, and bootloader setup.
-
-** WARNING:** This script will **wipe the selected disk completely**. Use with caution.
+The installation remains interactive, prompting the user for necessary decisions such as disk selection, swap configuration, locale, timezone, and user credentials.
 
 ---
 
 ## Features
 
-1. **Interactive Disk Selection**
-   - Lists all available disks with sizes and models.
-   - Prompts for user confirmation before wiping and partitioning.
+### Disk and Filesystem
 
-2. **Partitioning**
-   - Creates a GPT partition table.
-   - Default partitions:
-     - 2 GiB EFI system partition (`EFI`)
-     - Optional swap partition equal to system RAM
-     - Remaining space as Btrfs root (`ARCH`)
-   - Uses `parted` for precise MiB alignment.
+* Interactive disk selector.
+* Automatic disk cleanup if selected disk already has partitions.
+* GPT partitioning with `sgdisk`.
+* Partitions as follows:
 
-3. **Btrfs Setup**
-   - Formats the root partition as Btrfs.
-   - Creates standard subvolumes:
-     - `@` (root)
-     - `@home`, `@cache`, `@tmp`, `@log`, `@snapshots`
-   - Mounts subvolumes with `compress=zstd,noatime` options.
-   - Mounts EFI partition at `/mnt/boot`.
+  * EFI system partition (2 GiB, FAT32)
+  * Optional swap partition (user-defined size)
+  * Btrfs root partition
+* Btrfs formatting and subvolume setup:
 
-4. **System Installation**
-   - Installs base packages using `pacstrap`:
-     - `base`, `base-devel`, `linux`, `linux-firmware`, `sof-firmware`, CPU microcode packages, `limine`, `sudo`, `nano`, `git`, `networkmanager`, `btrfs-progs`, `reflector`, `zram-generator`
-   - Allows optional extra packages.
-   - Generates `/etc/fstab` using partition labels.
+  * `@` (root)
+  * `@home`
+  * `@cache`
+  * `@tmp`
+  * `@log`
+  * `@snapshots`
 
-5. **Post-Chroot Configuration**
-   - Locale and keyboard setup (`en_US.UTF-8`, US keymap).
-   - Hostname setup (`archlinux` by default).
-   - Timezone and hardware clock configuration.
-   - Interactive root password setup.
-   - Interactive creation of a user with password.
-   - Enables sudo for the `wheel` group.
-   - Enables essential services:
-     - `NetworkManager`, `fstrim.timer`, `reflector.service`
-   - Sets up Limine bootloader with basic configuration.
-   - Configures swap if present and enables ZRAM for improved memory performance.
+### System Installation
 
-6. **Bootloader Setup**
-   - Copies Limine EFI binary to `/boot/EFI/BOOT/BOOTX64.EFI`.
-   - Adds an EFI boot entry using `efibootmgr`.
+* Automatic CPU microcode detection (Intel/AMD).
+* Installs Arch base system with key packages:
 
----
+  * base, base-devel, linux, linux-firmware
+  * sof-firmware, sudo, git, nano, networkmanager
+  * btrfs-progs, reflector, zram-generator, limine
+* Optional installation of user-provided extra packages.
+* Locale and timezone configuration.
+* Root password creation and user account setup with wheel group.
+* Enables system services:
 
-## Usage
+  * NetworkManager
+  * reflector
+  * fstrim.timer
+  * zram-generator
 
-1. Boot into an Arch Linux live environment.
-2. Download or copy the script to the live environment.
-3. Run: `chmod +x ./arch-install.sh`
+### Bootloader
 
-4. Follow interactive prompts for:
-   - Disk selection
-   - Swap usage (y/N)
-   - Extra packages (optional packages)
-   - Root and user passwords
-   - Final confirmation to chroot and configure the system
+* Installs the Limine bootloader.
+* Generates `/boot/limine.conf`.
+* Creates EFI entry using `efibootmgr`.
 
-5. After post-chroot setup, optionally reboot into the newly installed system.
+### GPU Driver Installation (Optional)
+
+Auto-detects the system's GPU and installs appropriate driver for:
+
+* Intel
+* AMD
+* NVIDIA
+
+Supports:
+
+* Desktop systems
+* Laptops with hybrid graphics (Intel + NVIDIA, AMD + NVIDIA)
+
+### Optional KDE Plasma Installation
+
+* kde plasma, sddm, dolphin, konsole, and firefox
 
 ---
 
 ## Requirements
 
-- Arch Linux live environment
-- Internet connection
+To use this script, you must:
+
+* Boot into the Arch Linux live ISO.
+* Be running in UEFI mode.
+* Have an active internet connection.
+* Run the script as root.
+
+---
+
+## Usage
+
+### 1. Download the script
+
+Place the script in your Arch ISO environment.
+
+### 2. Make the script executable
+
+```sh
+chmod +x arch-install.sh
+```
+
+### 3. Run the script
+
+```sh
+./arch-install.sh
+```
+
+You must run it as root. The script will stop if not executed with root privileges.
+
+---
+
+## Partition Layout Overview
+
+The script creates the following partitions:
+
+| Partition              | Size         | Type                 | Description                |
+| ---------------------- | ------------ | -------------------- | -------------------------- |
+| /dev/sdX1              | 2 GiB        | EFI System Partition | Contains Limine bootloader |
+| /dev/sdX2              | User-defined | Swap (optional)      | Swap partition             |
+| /dev/sdX3 or /dev/sdX2 | Remainder    | Btrfs                | Main filesystem            |
+
+---
+
+## Btrfs Subvolumes
+
+The script creates and mounts the following subvolumes:
+
+| Subvolume  | Mount point           |
+| ---------- | --------------------- |
+| @          | /                     |
+| @home      | /home                 |
+| @cache     | /var/cache/pacman/pkg |
+| @tmp       | /var/tmp              |
+| @log       | /var/log              |
+| @snapshots | /.snapshots           |
+
+All subvolumes are mounted with:
+
+---
+
+## What the Script Configures Inside the Chroot
+
+* Enables multilib repository.
+* Updates all packages.
+* Sets system locale and keyboard layout.
+* Sets the hostname.
+* Configures timezone and hardware clock.
+* Creates root and user accounts.
+* Configures sudo access for the wheel group.
+* Optionally installs:
+  * GPU drivers
+  * KDE Plasma
+* Installs and configures Limine bootloader.
+* Enables essential services such as NetworkManager and fstrim.
+
+---
+
+## What Happens After Installation
+
+When installation completes:
+
+* A fully bootable Arch Linux system is written to the target disk.
+* The EFI bootloader entry is created automatically.
+* The installation script is copied to `/root/arch-install.sh` inside the installed system.
+* The user is prompted whether to reboot immediately.
 
 ---
 
 ## Notes
 
-- Script assumes `/mnt` as the temporary mount point for installation.
-- Uses Btrfs subvolume structure suitable for snapshotting and system rollback.
-- Enables basic services for a functional system after installation.
-- Compatible with both Intel and AMD systems with microcode packages installed automatically.
-
----
-
-## Disclaimer
-
-This script is provided **as-is**. It will destroy all data on the target disk. Make sure to back up any important data before proceeding. Use at your own risk.
-
+* This script is intended for users who prefer a guided installation while still maintaining full insight into what their system is doing.
+* Swap partition is optional. If disabled, no swap partition is created.
+* On laptop systems with hybrid GPUs, NVIDIA PRIME support is automatically configured.
