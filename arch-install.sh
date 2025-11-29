@@ -147,11 +147,6 @@ subvolumes() {
 }
 
 run_pacstrap() {
-    section "Ranking mirrors, this may take a few minutes..."
-
-    reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist &
-    REFLECTOR_PID=$!
-
     microcode_pkg=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}' | \
         sed -e 's/^GenuineIntel$/intel-ucode/' -e 's/^AuthenticAMD$/amd-ucode/')
 
@@ -172,15 +167,18 @@ run_pacstrap() {
 
     if [[ $REFLECTOR_STATUS -ne 0 ]]; then
         error "Reflector failed with exit code $REFLECTOR_STATUS"
-        exit 0
+    else
+        success "Reflector finished successfully. Proceeding with pacstrap..."
     fi
-
-    success "Reflector finished successfully. Proceeding with pacstrap..."
     
     section "Installing packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
 
     success "Packages installed..."
+
+    if [[ $REFLECTOR_STATUS -ne 0 ]]; then
+        cp --dereference /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
+    fi
 }
 
 configure_locale_timezone() {
@@ -405,7 +403,8 @@ chroot_setup() {
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
-    success "Post-chroot configuration complete..."
+    success "Post-chroot configuration complete, rebuilding initramfs..."
+    mkinitcpio -P
 }
 
 finalize_install() {
@@ -447,6 +446,9 @@ main() {
     prompt "Proceed? (y/N): "
     read -r answer
     [[ "${answer,,}" == "y" ]] || { warn "Aborted."; exit 1; }
+
+    reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist > /dev/null 2>&1 &
+    REFLECTOR_PID=$!
 
     choose_disk
     cleanup_disk
