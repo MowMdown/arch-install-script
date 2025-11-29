@@ -110,7 +110,7 @@ partition_disk() {
 
 format_partitions() {
     section "Formatting EFI partition..."
-    mkfs.fat -F32 -n EFI "$part1"
+    mkfs.fat -F 32 -n EFI "$part1"
 
     if [[ "$use_swap" == "yes" ]]; then
         section "Formatting swap partition..."
@@ -133,11 +133,9 @@ subvolumes() {
     umount -R /mnt
     sleep 2
 
-    section "Mounting subvolumes..."
     mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 
     mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
-
     mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
     mount -o compress=zstd,noatime,subvol=@cache "$btrfs_part" /mnt/var/cache/pacman/pkg
     mount -o compress=zstd,noatime,subvol=@tmp "$btrfs_part" /mnt/var/tmp
@@ -149,6 +147,11 @@ subvolumes() {
 }
 
 run_pacstrap() {
+    section "Ranking mirrors, this may take a few minutes..."
+
+    reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist &
+    REFLECTOR_PID=$!
+
     microcode_pkg=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}' | \
         sed -e 's/^GenuineIntel$/intel-ucode/' -e 's/^AuthenticAMD$/amd-ucode/')
 
@@ -163,8 +166,17 @@ run_pacstrap() {
     read -r extra_pkgs
     [[ -n "${extra_pkgs// }" ]] && base_pkgs="$base_pkgs $extra_pkgs"
 
-    section "Ranking mirrors..."
-    reflector --country 'United States' --age 12 --sort rate --save /etc/pacman.d/mirrorlist
+    info "Waiting for reflector to finish, please wait..."
+    wait $REFLECTOR_PID
+    REFLECTOR_STATUS=$?
+
+    if [[ $REFLECTOR_STATUS -ne 0 ]]; then
+        error "Reflector failed with exit code $REFLECTOR_STATUS"
+        exit 0
+    fi
+
+    success "Reflector finished successfully. Proceeding with pacstrap..."
+    
     section "Installing packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
 
@@ -310,22 +322,22 @@ install_gpu_drivers() {
     intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
 
     if [[ "$system_type" == "Desktop" ]]; then
-        [[ $has_amd -eq 0 ]] && pacman -S --needed $amd_pkgs
-        [[ $has_nvidia -eq 0 ]] && pacman -S --needed $nvidia_pkgs
-        [[ $has_intel -eq 0 ]] && pacman -S --needed $intel_pkgs
+        [[ $has_amd -eq 0 ]] && pacman -Sq --needed --noconfirm $amd_pkgs
+        [[ $has_nvidia -eq 0 ]] && pacman -Sq --needed --noconfirm $nvidia_pkgs
+        [[ $has_intel -eq 0 ]] && pacman -Sq --needed --noconfirm $intel_pkgs
     else
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
             info "Intel + NVIDIA hybrid detected."
-            pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs nvidia-prime
         elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
             info "AMD + NVIDIA hybrid detected."
-            pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs nvidia-prime
         elif [[ $has_intel -eq 0 ]]; then
             info "Intel-only laptop."
-            pacman -S --needed $intel_pkgs
+            pacman -Sq --needed --noconfirm $intel_pkgs
         elif [[ $has_amd -eq 0 ]]; then
             info "AMD-only laptop."
-            pacman -S --needed $amd_pkgs
+            pacman -Sq --needed --noconfirm $amd_pkgs
         fi
     fi
 
@@ -356,7 +368,7 @@ chroot_setup() {
     prompt "Install KDE Plasma desktop? (y/N): "
     read -r install_desktop_pkgs
     if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
-        pacman -S --noconfirm plasma-meta sddm dolphin konsole firefox
+        pacman -Sq --needed --noconfirm plasma-meta sddm dolphin konsole firefox
         systemctl enable sddm.service
     fi
 
@@ -372,6 +384,8 @@ chroot_setup() {
     systemctl enable fstrim.timer NetworkManager.service reflector.service
 
     mkdir -p /boot/EFI/BOOT
+
+    pacman -Sq --needed --noconfirm limine
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
     echo "timeout: 5" > /boot/limine.conf
@@ -427,7 +441,8 @@ finalize_install() {
 
 main() {
     [[ $EUID -eq 0 ]] || { error "Must be run as root."; exit 1; }
-
+    
+    clear
     warn "WARNING: This WILL DESTROY ALL DATA on the selected disk."
     prompt "Proceed? (y/N): "
     read -r answer
