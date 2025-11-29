@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RED="\033[0;31m"
-YELLOW="\033[0;33m"
-GREEN="\033[0;32m"
-CYAN="\033[0;36m"
-MAGENTA="\033[0;35m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+RED="\033[1;31m"
+BLUE="\033[1;34m"
+CYAN="\033[1;36m"
 RESET="\033[0m"
-
-info()    { echo -e "${GREEN}[INFO]${RESET} $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${RESET} $*"; }
-error()   { echo -e "${RED}[ERROR]${RESET} $*"; }
-success() { echo -e "${GREEN}[ OK ]${RESET} $*"; }
-section() { echo -e "${CYAN}==>${RESET} $*"; }
-prompt()  { echo -en "${MAGENTA}[INPUT]${RESET} $*"; }
+    
+info()    { echo -e "${GREEN}[INFO] $*${RESET}"; }
+warn()    { echo -e "${YELLOW}[WARN] $*${RESET}"; }
+error()   { echo -e "${RED}[ERROR] $*${RESET}"; }
+success() { echo -e "${GREEN}[ OK ] $*${RESET}"; }
+section() { echo -e "${CYAN}==> $*${RESET}"; }
+prompt()  { echo -en "${BLUE}[INPUT] $*${RESET}"; }
 
 choose_disk() {
     while true; do
@@ -332,6 +332,20 @@ install_gpu_drivers() {
 }
 
 chroot_setup() {
+    GREEN="\033[1;32m"
+    YELLOW="\033[1;33m"
+    RED="\033[1;31m"
+    BLUE="\033[1;34m"
+    CYAN="\033[1;36m"
+    RESET="\033[0m"
+    
+    info()    { echo -e "${GREEN}[INFO] $*${RESET}"; }
+    warn()    { echo -e "${YELLOW}[WARN] $*${RESET}"; }
+    error()   { echo -e "${RED}[ERROR] $*${RESET}"; }
+    success() { echo -e "${GREEN}[ OK ] $*${RESET}"; }
+    section() { echo -e "${CYAN}==> $*${RESET}"; }
+    prompt()  { echo -en "${BLUE}[INPUT] $*${RESET}"; }
+
     section "Enabling multilib..."
     sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf
     pacman -Syu --noconfirm
