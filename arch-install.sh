@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 GREEN="\033[1;32m"
@@ -7,17 +7,18 @@ RED="\033[1;31m"
 BLUE="\033[1;34m"
 CYAN="\033[1;36m"
 RESET="\033[0m"
-    
-info()    { echo -e "${GREEN}[INFO] $*${RESET}"; }
-warn()    { echo -e "${YELLOW}[WARN] $*${RESET}"; }
-error()   { echo -e "${RED}[ERROR] $*${RESET}"; }
-success() { echo -e "${GREEN}[ OK ] $*${RESET}"; }
-section() { echo -e "${CYAN}==> $*${RESET}"; }
-prompt()  { echo -en "${BLUE}[INPUT] $*${RESET}"; }
+
+info()    { echo; echo -e "${GREEN}[INFO] $*${RESET}"; }
+warn()    { echo; echo -e "${YELLOW}[WARN] $*${RESET}"; }
+error()   { echo; echo -e "${RED}[ERROR] $*${RESET}"; }
+success() { echo; echo -e "${GREEN}[ OK ] $*${RESET}"; }
+section() { echo; echo -e "${CYAN}==> ${BLUE}$*${RESET}"; }
+prompt()  { echo; echo -en "${BLUE}[INPUT] $*${RESET}"; }
 
 choose_disk() {
     while true; do
         section "Available disks:"
+        echo
         lsblk -dpno NAME,SIZE,MODEL | nl -w2 -s'. ' -v1 | sed '/^$/d'
 
         prompt "Enter the line number of the disk to use (will be wiped): "
@@ -60,7 +61,6 @@ cleanup_disk() {
 }
 
 set_swap() {
-    echo
     prompt "Enable swap? (y/N): "
     read -r use_swap_raw
 
@@ -72,13 +72,13 @@ set_swap() {
             if [[ "$mem_gib" =~ ^[0-9]+$ ]] && [ "$mem_gib" -gt 0 ]; then
                 break
             else
-                error "Enter a positive whole number."
+                error "Enter a positive whole number..."
             fi
         done
-        info "Swap will be ${mem_gib} GiB."
+        info "Swap will be ${mem_gib} GiB..."
     else
         use_swap="no"
-        warn "Swap will NOT be enabled."
+        warn "Swap will NOT be enabled..."
     fi
 }
 
@@ -94,6 +94,7 @@ partition_disk() {
     if [[ "$use_swap" == "yes" ]]; then
         sgdisk -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
         part2="${disk}2"
+
         sgdisk -n 3:0:0 -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
@@ -109,35 +110,32 @@ partition_disk() {
 
 format_partitions() {
     section "Formatting EFI partition..."
-    mkfs.fat -F32 -n EFI "$part1"
+    mkfs.fat -F 32 -n EFI "$part1"
 
     if [[ "$use_swap" == "yes" ]]; then
-        section "Creating swap..."
+        section "Formatting swap partition..."
         mkswap -L SWAP "$part2"
         swapon "$part2"
     fi
 
-    section "Formatting Btrfs partition..."
+    section "Formatting btrfs partition..."
     mkfs.btrfs -f -L ARCH "$btrfs_part"
 }
 
 subvolumes() {
-    section "Creating Btrfs subvolumes..."
+    section "Creating btrfs subvolumes..."
     mount -o subvolid=5 "$btrfs_part" /mnt
 
-    for sv in @ @home @cache @tmp @log @snapshots; do
-        info "Creating subvolume $sv"
-        btrfs subvolume create "/mnt/$sv"
+    for subv in @ @home @cache @tmp @log @snapshots; do
+        btrfs subvolume create "/mnt/$subv"
     done
 
     umount -R /mnt
     sleep 2
 
-    section "Mounting subvolumes..."
     mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
 
     mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
-
     mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
     mount -o compress=zstd,noatime,subvol=@cache "$btrfs_part" /mnt/var/cache/pacman/pkg
     mount -o compress=zstd,noatime,subvol=@tmp "$btrfs_part" /mnt/var/tmp
@@ -153,20 +151,30 @@ run_pacstrap() {
         sed -e 's/^GenuineIntel$/intel-ucode/' -e 's/^AuthenticAMD$/amd-ucode/')
 
     if [[ -z "$microcode_pkg" ]]; then
-        warn "Unknown CPU vendor, installing both intel-ucode and amd-ucode."
+        warn "Unknown CPU vendor, installing both intel-ucode and amd-ucode..."
         microcode_pkg="intel-ucode amd-ucode"
     fi
 
     base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
 
-    prompt "Extra packages to install (optional): "
-    read -r extra_packages
-    [[ -n "${extra_packages// }" ]] && base_pkgs="$base_pkgs $extra_packages"
+    prompt "Install extra packages? (press [ENTER] to skip): "
+    read -r extra_pkgs
+    [[ -n "${extra_pkgs// }" ]] && base_pkgs="$base_pkgs $extra_pkgs"
 
+    info "Waiting for reflector to finish, please wait..."
+    wait $REFLECTOR_PID
+    REFLECTOR_STATUS=$?
+
+    if [[ $REFLECTOR_STATUS -ne 0 ]]; then
+        error "Reflector failed with exit code $REFLECTOR_STATUS"
+    else
+        success "Reflector finished successfully. Proceeding with pacstrap..."
+    fi
+    
     section "Installing packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
 
-    success "Packages installed."
+    success "Packages installed..."
 }
 
 configure_locale_timezone() {
@@ -180,7 +188,7 @@ configure_locale_timezone() {
                 info "Selected locale: $full_locale"
                 break
             else
-                error "Locale not supported."
+                error "Locale not supported..."
             fi
         else
             error "Invalid format. Example: en_US"
@@ -196,7 +204,7 @@ configure_locale_timezone() {
     fi
 
     locale-gen
-    info "Locale generated."
+    info "Locale generated..."
 
     echo "LANG=${full_locale}" > /etc/locale.conf
     info "Locale set: $full_locale"
@@ -213,7 +221,7 @@ configure_locale_timezone() {
             info "Timezone set to $timezone"
             break
         else
-            error "Invalid timezone."
+            error "Invalid timezone..."
         fi
     done
 }
@@ -222,17 +230,17 @@ user_setup() {
     while true; do
         prompt "Enter new root password: "
         read -rs root_pass
-        echo
+
         prompt "Confirm root password: "
         read -rs root_pass_confirm
-        echo
+
 
         if [ "$root_pass" = "$root_pass_confirm" ]; then
             echo "root:$root_pass" | chpasswd
-            success "Root password set."
+            success "Root password set..."
             break
         else
-            error "Passwords do not match."
+            error "Passwords do not match..."
         fi
     done
 
@@ -242,25 +250,24 @@ user_setup() {
     while true; do
         prompt "Password for '$username': "
         read -rs user_pass
-        echo
+
         prompt "Confirm password: "
         read -rs user_pass_confirm
-        echo
 
         if [ "$user_pass" = "$user_pass_confirm" ]; then
             useradd -m -G wheel -s /bin/bash "$username"
             echo "$username:$user_pass" | chpasswd
-            success "User '$username' created."
+            success "User '$username' created..."
             break
         else
-            error "Passwords do not match."
+            error "Passwords do not match..."
         fi
     done
 }
 
 install_gpu_drivers() {
     while true; do
-        section "Is this system a:"
+        section "Desktop or Laptop?"
         echo "  1) Desktop"
         echo "  2) Laptop"
 
@@ -268,21 +275,21 @@ install_gpu_drivers() {
         read -r gpu_line
 
         if ! [[ "$gpu_line" =~ ^[0-9]+$ ]]; then
-            error "Input must be a number."
+            error "Input must be a number..."
             continue
         fi
 
         if [[ "$gpu_line" -eq 1 ]]; then
             system_type="Desktop"
-            info "Desktop selected."
+            info "Desktop selected..."
             break
         elif [[ "$gpu_line" -eq 2 ]]; then
             system_type="Laptop"
-            info "Laptop selected."
+            info "Laptop selected...."
             break
         fi
 
-        error "Invalid selection."
+        error "Invalid selection..."
     done
 
     section "Detecting GPUs..."
@@ -294,11 +301,11 @@ install_gpu_drivers() {
     has_intel=$(echo "$gpu_list" | grep -qi "Intel"; echo $?)
 
     if [[ $has_amd -ne 0 && $has_nvidia -ne 0 && $has_intel -ne 0 ]]; then
-        warn "No supported GPU found. Skipping."
+        warn "No supported GPU found. Skipping..."
         return 0
     fi
 
-    info "Detected GPUs:"
+    info "Detected GPU:"
     [[ $has_amd -eq 0 ]] && info "  AMD GPU"
     [[ $has_nvidia -eq 0 ]] && info "  NVIDIA GPU"
     [[ $has_intel -eq 0 ]] && info "  Intel GPU"
@@ -309,26 +316,26 @@ install_gpu_drivers() {
     intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
 
     if [[ "$system_type" == "Desktop" ]]; then
-        [[ $has_amd -eq 0 ]] && pacman -S --needed $amd_pkgs
-        [[ $has_nvidia -eq 0 ]] && pacman -S --needed $nvidia_pkgs
-        [[ $has_intel -eq 0 ]] && pacman -S --needed $intel_pkgs
+        [[ $has_amd -eq 0 ]] && pacman -Sq --needed --noconfirm $amd_pkgs
+        [[ $has_nvidia -eq 0 ]] && pacman -Sq --needed --noconfirm $nvidia_pkgs
+        [[ $has_intel -eq 0 ]] && pacman -Sq --needed --noconfirm $intel_pkgs
     else
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
             info "Intel + NVIDIA hybrid detected."
-            pacman -S --needed $intel_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs nvidia-prime
         elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
             info "AMD + NVIDIA hybrid detected."
-            pacman -S --needed $amd_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs nvidia-prime
         elif [[ $has_intel -eq 0 ]]; then
             info "Intel-only laptop."
-            pacman -S --needed $intel_pkgs
+            pacman -Sq --needed --noconfirm $intel_pkgs
         elif [[ $has_amd -eq 0 ]]; then
             info "AMD-only laptop."
-            pacman -S --needed $amd_pkgs
+            pacman -Sq --needed --noconfirm $amd_pkgs
         fi
     fi
 
-    success "GPU driver installation complete."
+    success "GPU driver installation complete..."
 }
 
 chroot_setup() {
@@ -338,22 +345,24 @@ chroot_setup() {
     BLUE="\033[1;34m"
     CYAN="\033[1;36m"
     RESET="\033[0m"
-    
-    info()    { echo -e "${GREEN}[INFO] $*${RESET}"; }
-    warn()    { echo -e "${YELLOW}[WARN] $*${RESET}"; }
-    error()   { echo -e "${RED}[ERROR] $*${RESET}"; }
-    success() { echo -e "${GREEN}[ OK ] $*${RESET}"; }
-    section() { echo -e "${CYAN}==> $*${RESET}"; }
-    prompt()  { echo -en "${BLUE}[INPUT] $*${RESET}"; }
 
-    section "Enabling multilib..."
+    info()    { echo; echo -e "${GREEN}[INFO] $*${RESET}"; }
+    warn()    { echo; echo -e "${YELLOW}[WARN] $*${RESET}"; }
+    error()   { echo; echo -e "${RED}[ERROR] $*${RESET}"; }
+    success() { echo; echo -e "${GREEN}[ OK ] $*${RESET}"; }
+    section() { echo; echo -e "${CYAN}==> ${BLUE}$*${RESET}"; }
+    prompt()  { echo; echo -en "${BLUE}[INPUT] $*${RESET}"; }
+
+    section "Enabling multilib repository..."
     sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf
-    pacman -Syu --noconfirm
+
+    section "Syncing repositories and updating package database..."
+    pacman -Syuq --noconfirm
 
     prompt "Install KDE Plasma desktop? (y/N): "
     read -r install_desktop_pkgs
     if [[ "${install_desktop_pkgs,,}" == "y" ]]; then
-        pacman -S --noconfirm plasma-meta sddm dolphin konsole firefox
+        pacman -Sq --needed --noconfirm plasma-meta sddm dolphin konsole firefox
         systemctl enable sddm.service
     fi
 
@@ -369,6 +378,8 @@ chroot_setup() {
     systemctl enable fstrim.timer NetworkManager.service reflector.service
 
     mkdir -p /boot/EFI/BOOT
+
+    pacman -Sq --needed --noconfirm limine
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
     echo "timeout: 5" > /boot/limine.conf
@@ -388,7 +399,7 @@ chroot_setup() {
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
-    success "Post-chroot configuration complete."
+    success "Post-chroot configuration complete..."
 }
 
 finalize_install() {
@@ -403,7 +414,7 @@ finalize_install() {
     prompt "Skip chroot? (y/N): "
     read -r skip_chroot
     if [[ "${skip_chroot,,}" == "y" ]]; then
-        warn "Chroot skipped. System mounted at /mnt."
+        warn "Chroot skipped. System mounted at /mnt..."
         exit 0
     fi
 
@@ -424,11 +435,15 @@ finalize_install() {
 
 main() {
     [[ $EUID -eq 0 ]] || { error "Must be run as root."; exit 1; }
-
+    
+    clear
     warn "WARNING: This WILL DESTROY ALL DATA on the selected disk."
     prompt "Proceed? (y/N): "
     read -r answer
     [[ "${answer,,}" == "y" ]] || { warn "Aborted."; exit 1; }
+
+    reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist > /dev/null 2>&1 &
+    REFLECTOR_PID=$!
 
     choose_disk
     cleanup_disk
