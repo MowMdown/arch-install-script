@@ -169,6 +169,7 @@ run_pacstrap() {
         error "Reflector failed with exit code $REFLECTOR_STATUS"
     else
         success "Reflector finished successfully. Proceeding with pacstrap..."
+        cp --dereference /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
     fi
     
     section "Installing packages: $base_pkgs"
