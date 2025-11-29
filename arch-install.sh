@@ -169,13 +169,16 @@ run_pacstrap() {
         error "Reflector failed with exit code $REFLECTOR_STATUS"
     else
         success "Reflector finished successfully. Proceeding with pacstrap..."
-        cp --dereference /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
     fi
     
     section "Installing packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
 
     success "Packages installed..."
+
+    if [[ $REFLECTOR_STATUS -ne 0 ]]; then
+        cp --dereference /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
+    fi
 }
 
 configure_locale_timezone() {
@@ -400,7 +403,8 @@ chroot_setup() {
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
 
-    success "Post-chroot configuration complete..."
+    success "Post-chroot configuration complete, rebuilding initramfs..."
+    mkinitcpio -P
 }
 
 finalize_install() {
