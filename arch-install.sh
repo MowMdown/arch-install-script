@@ -297,7 +297,7 @@ install_gpu_drivers() {
     done
 
     section "Detecting GPUs..."
-    gpu_list=$(lspci -nnk | grep -i "VGA\|3D")
+    gpu_list=$(lspci -d ::03xx | grep -i "VGA\|3D")
     echo "$gpu_list"
 
     has_amd=$(echo "$gpu_list" | grep -qi "AMD"; echo $?)
