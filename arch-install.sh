@@ -163,10 +163,12 @@ run_pacstrap() {
     read -r extra_pkgs
     [[ -n "${extra_pkgs// }" ]] && base_pkgs="$base_pkgs $extra_pkgs"
 
+    section "Ranking mirrors..."
+    reflector --country 'United States' --age 12 --sort rate --save /etc/pacman.d/mirrorlist
     section "Installing packages: $base_pkgs"
     pacstrap -K /mnt $base_pkgs
 
-    success "Packages installed."
+    success "Packages installed..."
 }
 
 configure_locale_timezone() {
