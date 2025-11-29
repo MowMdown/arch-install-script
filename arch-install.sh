@@ -357,9 +357,6 @@ chroot_setup() {
     mkdir -p /boot/EFI/BOOT
     cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
 
-    #
-    # These MUST stay plain `echo` as requested
-    #
     echo "timeout: 5" > /boot/limine.conf
     echo "default_entry: 1" >> /boot/limine.conf
     echo "" >> /boot/limine.conf
@@ -373,9 +370,6 @@ chroot_setup() {
         swapon -a
     fi
 
-    #
-    # Must remain plain `echo`
-    #
     echo "[zram0]" >> /etc/systemd/zram-generator.conf
     echo "zram-size = min(ram)" >> /etc/systemd/zram-generator.conf
     echo "compression-algorithm = zstd" >> /etc/systemd/zram-generator.conf
