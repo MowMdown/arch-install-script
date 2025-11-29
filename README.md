@@ -155,8 +155,6 @@ When installation completes:
 
 * A fully bootable Arch Linux system is written to the target disk.
 * The EFI bootloader entry is created automatically.
-* The installation script is copied to `/root/arch-install.sh` inside the installed system.
-* The user is prompted whether to reboot immediately.
 
 ---
 
@@ -164,4 +162,4 @@ When installation completes:
 
 * This script is intended for users who prefer a guided installation while still maintaining full insight into what their system is doing.
 * Swap partition is optional. If disabled, no swap partition is created.
-* On laptop systems with hybrid GPUs, NVIDIA PRIME support is automatically configured.
+* On laptop systems with hybrid GPUs, NVIDIA PRIME support is automatically configured for laptops with Nvidia GPUs.
