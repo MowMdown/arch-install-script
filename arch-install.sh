@@ -315,9 +315,9 @@ install_gpu_drivers() {
     [[ $has_intel -eq 0 ]] && info "  Intel GPU"
 
     section "Installing GPU drivers..."
-    amd_pkgs="mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
-    nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils"
-    intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
+    amd_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
+    nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils nvidia-prime"
+    intel_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
 
     if [[ "$system_type" == "Desktop" ]]; then
         [[ $has_amd -eq 0 ]] && pacman -Sq --needed --noconfirm $amd_pkgs
@@ -326,10 +326,10 @@ install_gpu_drivers() {
     else
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
             info "Intel + NVIDIA hybrid detected."
-            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs
         elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
             info "AMD + NVIDIA hybrid detected."
-            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs
         elif [[ $has_intel -eq 0 ]]; then
             info "Intel-only laptop."
             pacman -Sq --needed --noconfirm $intel_pkgs
