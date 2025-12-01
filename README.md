@@ -13,8 +13,6 @@ The installation remains interactive, prompting the user for necessary decisions
 * Interactive disk selector.
 * Automatic disk cleanup if selected disk already has partitions.
 * GPT partitioning with `sgdisk`.
-* Partitions as follows:
-
   * EFI system partition (2 GiB, FAT32)
   * Optional swap partition (user-defined size)
   * Btrfs root partition
@@ -31,25 +29,22 @@ The installation remains interactive, prompting the user for necessary decisions
 
 * Automatic CPU microcode detection (Intel/AMD).
 * Installs Arch base system with key packages:
-
-  * base, base-devel, linux, linux-firmware
-  * sof-firmware, sudo, git, nano, networkmanager
-  * btrfs-progs, reflector, zram-generator, limine
-* Optional installation of user-provided extra packages.
+  * base, base-devel, linux, linux-firmware, sof-firmware, sudo, git, nano, networkmanager, btrfs-progs, reflector, zram-generator, limine
+* Allows optional installation of used defined additional packages.
 * Locale and timezone configuration.
 * Root password creation and user account setup with wheel group.
 * Enables system services:
 
   * NetworkManager
-  * reflector
-  * fstrim.timer
-  * zram-generator
+  * Reflector
+  * TRIM Support
+  * Zram compressed page block device.
 
 ### Bootloader
 
 * Installs the Limine bootloader.
-* Generates `/boot/limine.conf`.
-* Creates EFI entry using `efibootmgr`.
+* Generates bootloader configuration `/boot/limine.conf`.
+* Automatic EFI boot entry using `efibootmgr`.
 
 ### GPU Driver Installation (Optional)
 
@@ -105,19 +100,15 @@ You must run it as root. The script will stop if not executed with root privileg
 
 ## Partition Layout Overview
 
-The script creates the following partitions:
-
 | Partition              | Size         | Type                 | Description                |
 | ---------------------- | ------------ | -------------------- | -------------------------- |
-| /dev/sdX1              | 2 GiB        | EFI System Partition | Contains Limine bootloader |
+| /dev/sdX1              | 2 GiB        | EFI System Partition | Bootloader                 |
 | /dev/sdX2              | User-defined | Swap (optional)      | Swap partition             |
-| /dev/sdX3 or /dev/sdX2 | Remainder    | Btrfs                | Main filesystem            |
+| /dev/sdX3 or /dev/sdX2 | Remainder    | Btrfs                | Root filesystem            |
 
 ---
 
 ## Btrfs Subvolumes
-
-The script creates and mounts the following subvolumes:
 
 | Subvolume  | Mount point           |
 | ---------- | --------------------- |
@@ -128,18 +119,16 @@ The script creates and mounts the following subvolumes:
 | @log       | /var/log              |
 | @snapshots | /.snapshots           |
 
-All subvolumes are mounted with:
-
 ---
 
 ## What the Script Configures Inside the Chroot
 
 * Enables multilib repository.
-* Updates all packages.
-* Sets system locale and keyboard layout.
+* Syncronizes package database.
+* Configure system locale and keyboard layout.
 * Sets the hostname.
-* Configures timezone and hardware clock.
-* Creates root and user accounts.
+* Configures timezone and syncs hardware clock.
+* Set root password and create user account.
 * Configures sudo access for the wheel group.
 * Optionally installs:
   * GPU drivers
