@@ -83,23 +83,33 @@ set_swap() {
 }
 
 partition_disk() {
+    section "Detecting logical sector size for alignment..."
+    log_sec=$(cat /sys/block/$(basename "$disk")/queue/logical_block_size)
+    ALIGN=$((4096 / log_sec))
+
+    if (( ALIGN < 1 )); then
+        ALIGN=1
+    fi
+
+    section "Using sgdisk alignment multiplier: $ALIGN (sector size: ${log_sec} bytes)"
+
     section "Wiping partition table and signatures on $disk..."
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
 
-    section "Creating partitions with sgdisk..."
-    sgdisk -n 1:0:2G -t1:EF00 "$disk"
+    section "Creating partitions with sgdisk (auto 4K aligned)..."
+    sgdisk -a "$ALIGN" -n 1:0:2G -t1:EF00 "$disk"
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
-        sgdisk -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
+        sgdisk -a "$ALIGN" -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
         part2="${disk}2"
 
-        sgdisk -n 3:0:0 -t3:8300 "$disk"
+        sgdisk -a "$ALIGN" -n 3:0:0 -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
     else
-        sgdisk -n 2:0:0 -t2:8300 "$disk"
+        sgdisk -a "$ALIGN" -n 2:0:0 -t2:8300 "$disk"
         part2="${disk}2"
         btrfs_part="$part2"
     fi
@@ -107,6 +117,8 @@ partition_disk() {
     partprobe "$disk" || true
     sleep 1
 }
+
+
 
 format_partitions() {
     section "Formatting EFI partition..."
@@ -297,7 +309,7 @@ install_gpu_drivers() {
     done
 
     section "Detecting GPUs..."
-    gpu_list=$(lspci -nnk | grep -i "VGA\|3D")
+    gpu_list=$(lspci -d ::03xx | grep -i "VGA\|3D")
     echo "$gpu_list"
 
     has_amd=$(echo "$gpu_list" | grep -qi "AMD"; echo $?)
@@ -315,9 +327,9 @@ install_gpu_drivers() {
     [[ $has_intel -eq 0 ]] && info "  Intel GPU"
 
     section "Installing GPU drivers..."
-    amd_pkgs="mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
-    nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils"
-    intel_pkgs="mesa lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
+    amd_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
+    nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils nvidia-prime"
+    intel_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
 
     if [[ "$system_type" == "Desktop" ]]; then
         [[ $has_amd -eq 0 ]] && pacman -Sq --needed --noconfirm $amd_pkgs
@@ -326,10 +338,10 @@ install_gpu_drivers() {
     else
         if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
             info "Intel + NVIDIA hybrid detected."
-            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs
         elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
             info "AMD + NVIDIA hybrid detected."
-            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs nvidia-prime
+            pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs
         elif [[ $has_intel -eq 0 ]]; then
             info "Intel-only laptop."
             pacman -Sq --needed --noconfirm $intel_pkgs
