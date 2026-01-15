@@ -119,7 +119,7 @@ format_partitions() {
     fi
 
     section "Formatting btrfs partition..."
-    mkfs.btrfs -f -L ARCH "$btrfs_part"
+    mkfs.btrfs -f -L ARCH -n 32k "$btrfs_part"
 }
 
 subvolumes() {
