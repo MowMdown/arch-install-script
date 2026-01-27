@@ -82,34 +82,74 @@ set_swap() {
     fi
 }
 
+nvme_4kn_interactive() {
+    local target_disk="$1"  # Receive disk as argument
+    [[ -z "$target_disk" ]] && { error "No disk provided to NVMe interactive shell."; return 1; }
+
+    section "Launching interactive side shell for NVMe 4Kn formatting..."
+    warn "You can inspect the NVMe disk and cancel formatting safely."
+
+    # Spawn a Bash subprocess with the function and disk pre-defined
+    bash --rcfile <(echo "PS1='[NVMe 4Kn] \$ '"; declare -f nvme_4kn_prompt) -i -c "disk='$target_disk'; nvme_4kn_prompt"
+
+    info "Exited side shell. Continuing installer..."
+}
+
+nvme_4kn_prompt() {
+    section "Checking NVMe namespace LBA formats on $disk..."
+
+    ns_info=$(nvme id-ns -H "$disk" 2>/dev/null) || {
+        warn "Failed to query NVMe namespace info."
+        return 0
+    }
+
+    current_lbaf=$(echo "$ns_info" | awk '/in use/ {print $NF}')
+    lba1_line=$(echo "$ns_info" | grep "LBA Format  1" || true)
+
+    [[ -n "$lba1_line" ]] || { info "LBA Format 1 not supported."; return 0; }
+
+    info "$lba1_line"
+    data_size=$(echo "$lba1_line" | sed -n 's/.*Data Size: *\([0-9]\+\) bytes.*/\1/p')
+
+    [[ "$data_size" == "4096" ]] || { info "LBA Format 1 is ${data_size} bytes; skipping."; return 0; }
+
+    [[ "$current_lbaf" == "1" ]] && { success "NVMe already 4Kn."; return 0; }
+
+    warn "NVMe supports 4Kn (4096-byte logical blocks)."
+    warn "Formatting WILL ERASE ALL DATA on $disk."
+
+    prompt "Format NVMe namespace to 4Kn now? (y/N): "
+    read -r confirm
+    [[ "${confirm,,}" != "y" ]] && { info "User canceled 4Kn format."; return 0; }
+
+    section "Formatting NVMe namespace to 4Kn..."
+    nvme format --lbaf=1 "$disk"
+
+    blockdev --rereadpt "$disk" 2>/dev/null || true
+    partprobe "$disk" 2>/dev/null || true
+
+    success "NVMe namespace formatted to 4Kn."
+    info "Returning to installer..."
+}
+
 partition_disk() {
-    section "Detecting logical sector size for alignment..."
-    log_sec=$(cat /sys/block/$(basename "$disk")/queue/logical_block_size)
-    ALIGN=$((4096 / log_sec))
-
-    if (( ALIGN < 1 )); then
-        ALIGN=1
-    fi
-
-    section "Using sgdisk alignment multiplier: $ALIGN (sector size: ${log_sec} bytes)"
-
     section "Wiping partition table and signatures on $disk..."
     sgdisk --zap-all "$disk" || true
     wipefs -a "$disk" || true
 
-    section "Creating partitions with sgdisk (auto 4K aligned)..."
-    sgdisk -a "$ALIGN" -n 1:0:2G -t1:EF00 "$disk"
+    section "Creating partitions with sgdisk..."
+    sgdisk -n 1:0:2G -I -t1:EF00 "$disk"
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
-        sgdisk -a "$ALIGN" -n 2:0:"+${mem_gib}G" -t2:8200 "$disk"
+        sgdisk -n 2:0:"+${mem_gib}G" -I -t2:8200 "$disk"
         part2="${disk}2"
 
-        sgdisk -a "$ALIGN" -n 3:0:0 -t3:8300 "$disk"
+        sgdisk -n 3:0:0 -I -t3:8300 "$disk"
         part3="${disk}3"
         btrfs_part="$part3"
     else
-        sgdisk -a "$ALIGN" -n 2:0:0 -t2:8300 "$disk"
+        sgdisk -n 2:0:0 -I -t2:8300 "$disk"
         part2="${disk}2"
         btrfs_part="$part2"
     fi
@@ -117,8 +157,6 @@ partition_disk() {
     partprobe "$disk" || true
     sleep 1
 }
-
-
 
 format_partitions() {
     section "Formatting EFI partition..."
@@ -131,7 +169,7 @@ format_partitions() {
     fi
 
     section "Formatting btrfs partition..."
-    mkfs.btrfs -f -L ARCH "$btrfs_part"
+    mkfs.btrfs -f -L ARCH -n 32k "$btrfs_part"
 }
 
 subvolumes() {
@@ -465,6 +503,9 @@ main() {
     choose_disk
     cleanup_disk
     set_swap
+    if [[ "$disk" == /dev/nvme*n* ]]; then
+        nvme_4kn_interactive "$disk"
+    fi
     partition_disk
     format_partitions
     subvolumes
