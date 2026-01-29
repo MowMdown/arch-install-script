@@ -80,18 +80,21 @@ To use this script, you must:
 
 ### 1. Download the script
 
-Place the script in your Arch ISO environment.
+```
+curl -L -o ais.sh \
+https://github.com/MowMdown/arch-install-script/releases/download/v1/arch-install-script.sh
+```
 
 ### 2. Make the script executable
 
 ```sh
-chmod +x arch-install.sh
+chmod +x ais.sh
 ```
 
 ### 3. Run the script
 
 ```sh
-./arch-install.sh
+./ais.sh
 ```
 
 You must run it as root. The script will stop if not executed with root privileges.
