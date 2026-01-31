@@ -207,9 +207,41 @@ run_pacstrap() {
 
     base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
 
-    prompt "Install extra packages? (press [ENTER] to skip): "
+    prompt "Install extra packages? Prefix with ! to remove a base package (press [ENTER] to skip): "
     read -r extra_pkgs
-    [[ -n "${extra_pkgs// }" ]] && base_pkgs="$base_pkgs $extra_pkgs"
+
+    if [[ -n "${extra_pkgs// }" ]]; then
+        removals=()
+        additions=()
+        for token in $extra_pkgs; do
+            if [[ "$token" == !* ]]; then
+                removals+=("${token#!}")
+            else
+                additions+=("$token")
+            fi
+        done
+
+        if [[ ${#removals[@]} -gt 0 ]]; then
+            filtered=()
+            for pkg in $base_pkgs; do
+                skip=false
+                for rm in "${removals[@]}"; do
+                    if [[ "$pkg" == "$rm" ]]; then
+                        skip=true
+                        break
+                    fi
+                done
+                $skip || filtered+=("$pkg")
+            done
+            base_pkgs="${filtered[*]}"
+            warn "Removed from base: ${removals[*]}"
+        fi
+
+        if [[ ${#additions[@]} -gt 0 ]]; then
+            base_pkgs="$base_pkgs ${additions[*]}"
+            info "Added extra: ${additions[*]}"
+        fi
+    fi
 
     info "Waiting for reflector to finish, please wait..."
     wait $REFLECTOR_PID
