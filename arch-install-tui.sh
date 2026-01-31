@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # Dialog configuration
-pacman -Sq --needed --noconfirm dialog
+pacman -S --needed --noconfirm dialog
 
 DIALOG_OK=0
 DIALOG_CANCEL=1
@@ -469,7 +469,7 @@ partition_disk() {
     exec_with_progress "Partitioning" "Updating partition table" \
         "partprobe '$disk' && sleep 1"
     
-    dialog_msgbox "Partitioning Complete" "Disk partitioning finished successfully."
+    dialog_infobox "Partitioning Complete" "Disk partitioning finished successfully."
 }
 
 format_partitions() {
@@ -484,7 +484,7 @@ format_partitions() {
     exec_with_progress "Formatting" "Formatting Btrfs root partition" \
         "mkfs.btrfs -f -L ARCH -n 32k '$btrfs_part'"
     
-    dialog_msgbox "Formatting Complete" "All partitions formatted successfully."
+    dialog_infobox "Formatting Complete" "All partitions formatted successfully."
 }
 
 create_subvolumes() {
@@ -530,7 +530,7 @@ create_subvolumes() {
     mkdir -p /mnt/arch/boot
     mount "$part1" /mnt/arch/boot
     
-    dialog_msgbox "Btrfs Setup Complete" "Subvolumes created and mounted successfully."
+    dialog_infobox "Btrfs Setup Complete" "Subvolumes created and mounted successfully."
 }
 
 install_packages() {
@@ -652,7 +652,7 @@ install_desktop_environment() {
     sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /mnt/arch/etc/pacman.conf
     
     dialog_infobox "Installing Desktop" "Updating package database..."
-    arch-chroot /mnt/arch pacman -Syuq --noconfirm > /dev/null 2>&1
+    arch-chroot /mnt/arch pacman -Syu --noconfirm > /dev/null 2>&1
     
     local tmpfile=$(mktemp)
     
@@ -661,7 +661,7 @@ install_desktop_environment() {
         $HEIGHT $WIDTH
     
     (
-        arch-chroot /mnt/arch pacman -Sq --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
+        arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
         --programbox "Installing desktop environment..." 30 $WIDTH
@@ -710,18 +710,18 @@ install_gpu_drivers() {
     
     (
         if [[ "$system_type" == "Desktop" ]]; then
-            [[ $has_amd -eq 0 ]] && arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $amd_pkgs
-            [[ $has_nvidia -eq 0 ]] && arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $nvidia_pkgs
-            [[ $has_intel -eq 0 ]] && arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $intel_pkgs
+            [[ $has_amd -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs
+            [[ $has_nvidia -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $nvidia_pkgs
+            [[ $has_intel -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs
         else
             if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $intel_pkgs $nvidia_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs $nvidia_pkgs
             elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $amd_pkgs $nvidia_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs $nvidia_pkgs
             elif [[ $has_intel -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $intel_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs
             elif [[ $has_amd -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -Sq --needed --noconfirm $amd_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs
             fi
         fi
         echo $? > "${tmpfile}.exit"
@@ -738,7 +738,7 @@ install_bootloader() {
     dialog_infobox "Bootloader" "Installing Limine bootloader..."
     
     arch-chroot /mnt/arch mkdir -p /boot/EFI/BOOT
-    arch-chroot /mnt/arch pacman -Sq --needed --noconfirm limine > /dev/null 2>&1
+    arch-chroot /mnt/arch pacman -S --needed --noconfirm limine > /dev/null 2>&1
     arch-chroot /mnt/arch cp /usr/share/limine/BOOTX64.EFI /boot/EFI/BOOT/
     
     cat > /mnt/arch/boot/limine.conf << 'EOF'
