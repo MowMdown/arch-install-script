@@ -10,14 +10,6 @@ DIALOG_ESC=255
 HEIGHT=20
 WIDTH=70
 
-# Color codes for terminal output (used outside dialog)
-GREEN="\033[1;32m"
-YELLOW="\033[1;33m"
-RED="\033[1;31m"
-BLUE="\033[1;34m"
-CYAN="\033[1;36m"
-RESET="\033[0m"
-
 # Configuration variables
 declare -g disk=""
 declare -g use_swap="no"
@@ -365,7 +357,7 @@ DISK & PARTITIONS:
 SYSTEM CONFIGURATION:
   Locale: $full_locale
   Timezone: $timezone
-  Hostname: archlinux
+  Hostname: $hostname
 
 USER ACCOUNTS:
   Root: Password set
