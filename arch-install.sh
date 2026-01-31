@@ -453,7 +453,10 @@ chroot_setup() {
     section() { echo; echo -e "${CYAN}==> ${BLUE}$*${RESET}"; }
     prompt()  { echo; echo -en "${BLUE}[INPUT] $*${RESET}"; }
 
-    section "Enabling multilib repository..."
+    section "Configuring /etc/pacman.conf..."
+    sed -i '/^[[:space:]]*#Color/ s/^[[:space:]]*#//' /etc/pacman.conf
+    sed -i '/^[[:space:]]*ParallelDownloads[[:space:]]*=/ s/=.*/= 15/' /etc/pacman.conf
+    sed -i '/^[[:space:]]*#DisableSandbox/ a ILoveCandy' /etc/pacman.conf
     sed -i '/^[[:space:]]*#[[:space:]]*\[multilib\]/ { s/^[[:space:]]*#//; n; s/^[[:space:]]*#// }' /etc/pacman.conf
 
     section "Syncing repositories and updating package database..."
