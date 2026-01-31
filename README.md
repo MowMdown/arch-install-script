@@ -82,7 +82,7 @@ To use this script, you must:
 
 ```
 curl -L -o ais.sh \
-https://github.com/MowMdown/arch-install-script/releases/download/v1/arch-install-script.sh
+https://github.com/MowMdown/arch-install-script/releases/download/v2/arch-install-script.sh
 ```
 
 ### 2. Make the script executable
