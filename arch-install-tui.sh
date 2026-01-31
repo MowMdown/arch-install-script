@@ -29,6 +29,7 @@ declare -g btrfs_part=""
 declare -g user_locale=""
 declare -g full_locale=""
 declare -g timezone=""
+declare -g hostname=""
 declare -g username=""
 declare -g root_pass=""
 declare -g user_pass=""
@@ -137,8 +138,8 @@ config_set_swap() {
         
         while true; do
             mem_gib=$(dialog --title "Swap Size" \
-                --inputbox "Enter swap size in GiB (whole number):" \
-                $HEIGHT $WIDTH "8" 2>&1 >/dev/tty)
+                --inputbox "Enter swap size in GB (whole numbers):" \
+                $HEIGHT $WIDTH "" 2>&1 >/dev/tty)
             
             if [ $? -ne $DIALOG_OK ]; then
                 use_swap="no"
@@ -156,7 +157,7 @@ config_set_swap() {
     fi
 }
 
-config_locale_timezone() {
+config_locale_tz_hostname() {
     # Locale selection
     while true; do
         user_locale=$(dialog --title "Locale Configuration" \
@@ -190,9 +191,26 @@ config_locale_timezone() {
         fi
         
         if [[ -f "/usr/share/zoneinfo/$timezone" ]]; then
-            return 0
+            break
         else
             dialog_msgbox "Error" "Invalid timezone: $timezone"
+        fi
+    done
+
+    # Hostname
+    while true; do
+        hostname=$(dialog --title "Hostname Configuration" \
+            --inputbox "Enter a machine hostname (e.g., archlinux):" \
+            $HEIGHT $WIDTH "archlinux" 2>&1 >/dev/tty)
+        
+        if [ $? -ne $DIALOG_OK ]; then
+            return 1
+        fi
+        
+        if [ -n "$hostname" ]; then
+            break
+        else
+            dialog_msgbox "Error" "Username cannot be empty."
         fi
     done
 }
@@ -371,7 +389,6 @@ SOFTWARE:
 
 
 # EXECUTION PHASE - Apply configuration to disk
-
 cleanup_disk() {
     dialog_infobox "Cleaning Up" "Unmounting /mnt/arch and disabling swap..."
     
@@ -617,7 +634,7 @@ configure_system() {
     arch-chroot /mnt/arch locale-gen > /dev/null 2>&1
     echo "LANG=${full_locale}" > /mnt/arch/etc/locale.conf
     echo "KEYMAP=us" > /mnt/arch/etc/vconsole.conf
-    echo "archlinux" > /mnt/arch/etc/hostname
+    echo "${hostname}" > /mnt/arch/etc/hostname
     
     dialog_infobox "Configuring" "Setting timezone..."
     arch-chroot /mnt/arch ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
@@ -783,7 +800,7 @@ run_configuration_wizard() {
         # Collect all configuration
         config_choose_disk || return 1
         config_set_swap || return 1
-        config_locale_timezone || return 1
+        config_locale_tz_hostname || return 1
         config_users || return 1
         config_packages || return 1
         config_desktop || return 1
