@@ -84,8 +84,6 @@ exec_with_progress() {
 
 
 # CONFIGURATION PHASE - Collect all settings upfront
-
-
 config_choose_disk() {
     local disk_list=""
     local line_num=1
