@@ -4,6 +4,12 @@ This repository contains an automated Arch Linux installation script designed to
 
 The installation remains interactive, prompting the user for necessary decisions such as disk selection, swap configuration, locale, timezone, and user credentials.
 
+<img width="911" height="558" alt="image" src="https://github.com/user-attachments/assets/f39b043f-a7b8-4c88-bd08-4621fb15fe6b" />
+
+<img width="911" height="558" alt="image" src="https://github.com/user-attachments/assets/920ef794-0a82-42b8-80f8-6ad23b0655c3" />
+
+<img width="911" height="558" alt="image" src="https://github.com/user-attachments/assets/8ffbcb83-b2f3-47dc-a646-3ebc0b4e6cab" />
+
 ---
 
 ## Features
