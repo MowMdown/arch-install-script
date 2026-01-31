@@ -8,7 +8,9 @@ DIALOG_OK=0
 DIALOG_CANCEL=1
 DIALOG_ESC=255
 HEIGHT=20
-WIDTH=70
+WIDTH=80
+HEIGHT_TALL=40
+WIDTH_WIDE=120
 
 # Configuration variables
 declare -g disk=""
@@ -589,7 +591,7 @@ install_packages() {
         pacstrap -K /mnt/arch $base_pkgs 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing Packages" \
-        --programbox "Installing: $base_pkgs" 30 $WIDTH
+        --programbox "Installing: $base_pkgs" $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
     
