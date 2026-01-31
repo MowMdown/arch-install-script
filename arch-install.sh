@@ -40,13 +40,13 @@ choose_disk() {
 }
 
 cleanup_disk() {
-    section "Unmounting /mnt before proceeding..."
-    if mountpoint -q /mnt; then
-        warn "/mnt is currently mounted, unmounting..."
-        umount -R /mnt || true
+    section "Unmounting /mnt/arch before proceeding..."
+    if mountpoint -q /mnt/arch; then
+        warn "/mnt/arch is currently mounted, unmounting..."
+        umount -R /mnt/arch || true
         sleep 2
     else
-        info "/mnt is not mounted."
+        info "/mnt/arch is not mounted."
     fi
 
     section "Checking for swap partitions on $disk..."
@@ -115,7 +115,7 @@ nvme_4kn_prompt() {
 
     [[ "$current_lbaf" == "1" ]] && { success "NVMe already 4Kn."; return 0; }
 
-    warn "NVMe supports 4Kn (4096-byte logical blocks)."
+    info "NVMe supports 4Kn (4096-byte logical blocks)."
     warn "Formatting WILL ERASE ALL DATA on $disk."
 
     prompt "Format NVMe namespace to 4Kn now? (y/N): "
@@ -173,27 +173,38 @@ format_partitions() {
 }
 
 subvolumes() {
-    section "Creating btrfs subvolumes..."
-    mount -o subvolid=5 "$btrfs_part" /mnt
+    declare -A subvol_mounts=(
+        ["@"]="."
+        ["@home"]="home"
+        ["@cache"]="var/cache/pacman/pkg"
+        ["@tmp"]="var/tmp"
+        ["@log"]="var/log"
+        ["@snapshots"]=".snapshots"
+    )
 
-    for subv in @ @home @cache @tmp @log @snapshots; do
-        btrfs subvolume create "/mnt/$subv"
+    base_opts="noatime,compress=zstd:3,discard=async,ssd,space_cache=v2"
+
+    section "Creating btrfs subvolumes..."
+    mkdir -p /mnt/arch
+    mount -o "${base_opts},subvolid=5" "$btrfs_part" /mnt/arch
+
+    for subvol in @ @home @cache @tmp @log @snapshots; do
+        btrfs subvolume create "/mnt/arch/$subvol"
     done
 
-    umount -R /mnt
+    umount -R /mnt/arch
     sleep 2
 
-    mount -o compress=zstd,noatime,subvol=@ "$btrfs_part" /mnt
+    section "Mounting btrfs subvolumes..."
+    for subvol in @ @home @cache @tmp @log @snapshots; do
+        target="/mnt/arch/${subvol_mounts[$subvol]}"
+        [[ "$target" != "/mnt/arch/." ]] && mkdir -p "$target"
+        mount -o "${base_opts},subvol=${subvol}" "$btrfs_part" "$target"
+    done
 
-    mkdir -p /mnt/{home,var/cache/pacman/pkg,var/tmp,var/log,.snapshots}
-    mount -o compress=zstd,noatime,subvol=@home "$btrfs_part" /mnt/home
-    mount -o compress=zstd,noatime,subvol=@cache "$btrfs_part" /mnt/var/cache/pacman/pkg
-    mount -o compress=zstd,noatime,subvol=@tmp "$btrfs_part" /mnt/var/tmp
-    mount -o compress=zstd,noatime,subvol=@log "$btrfs_part" /mnt/var/log
-    mount -o compress=zstd,noatime,subvol=@snapshots "$btrfs_part" /mnt/.snapshots
-
-    mkdir -p /mnt/boot
-    mount "$part1" /mnt/boot
+    section "Mounting EFI partition..."
+    mkdir -p /mnt/arch/boot
+    mount "$part1" /mnt/arch/boot
 }
 
 run_pacstrap() {
@@ -207,7 +218,10 @@ run_pacstrap() {
 
     base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
 
-    prompt "Install extra packages? Prefix with ! to remove a base package (press [ENTER] to skip): "
+    section "Base packages to be installed:"
+    info "$(echo "$base_pkgs" | sed 's/ \+/ | /g')"
+    info "Add packages by name, or remove a base package by prefixing it with '!'."
+    prompt "Enter package names or press [ENTER] to skip: "
     read -r extra_pkgs
 
     if [[ -n "${extra_pkgs// }" ]]; then
@@ -254,12 +268,12 @@ run_pacstrap() {
     fi
     
     section "Installing packages: $base_pkgs"
-    pacstrap -K /mnt $base_pkgs
+    pacstrap -K /mnt/arch $base_pkgs
 
     success "Packages installed..."
 
     if [[ $REFLECTOR_STATUS -ne 0 ]]; then
-        cp --dereference /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
+        cp --dereference /etc/pacman.d/mirrorlist /mnt/arch/etc/pacman.d/mirrorlist
     fi
 }
 
@@ -490,13 +504,13 @@ chroot_setup() {
 }
 
 finalize_install() {
-    section "Generating /etc/fstab..."
-    genfstab -L /mnt > /mnt/etc/fstab
+    section "Generating fstab..."
+    genfstab -L /mnt/arch > /mnt/arch/etc/fstab
 
     section "Copying script into new system..."
     mkdir -p /mnt/root
-    cp -- "$0" /mnt/root/arch-install.sh
-    chmod +x /mnt/root/arch-install.sh
+    cp -- "$0" /mnt/arch/root/arch-install.sh
+    chmod +x /mnt/arch/root/arch-install.sh
 
     prompt "Skip chroot? (y/N): "
     read -r skip_chroot
@@ -505,7 +519,7 @@ finalize_install() {
         exit 0
     fi
 
-    arch-chroot /mnt /bin/bash -c \
+    arch-chroot /mnt/arch /bin/bash -c \
         "$(declare -f chroot_setup configure_locale_timezone user_setup install_gpu_drivers); chroot_setup"
 
     section "Adding EFI boot entry..."
