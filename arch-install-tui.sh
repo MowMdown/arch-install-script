@@ -199,10 +199,13 @@ config_locale_tz_hostname() {
             return 1
         fi
         
-        if [ -n "$hostname" ]; then
-            break
+        # Reject empty hostnames and those with underscores
+        if [ -z "$hostname" ]; then
+            dialog_msgbox "Error" "Hostname cannot be empty."
+        elif [[ "$hostname" == *"_"* ]]; then
+            dialog_msgbox "Error" "Hostname cannot contain underscores."
         else
-            dialog_msgbox "Error" "Username cannot be empty."
+            break
         fi
     done
 }
