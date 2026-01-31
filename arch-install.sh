@@ -138,7 +138,7 @@ partition_disk() {
     wipefs -a "$disk" || true
 
     section "Creating partitions with sgdisk..."
-    sgdisk -n 1:0:2G -I -t1:EF00 "$disk"
+    sgdisk -n 1:0:4G -I -t1:EF00 "$disk"
     part1="${disk}1"
 
     if [[ "$use_swap" == "yes" ]]; then
