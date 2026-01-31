@@ -8,6 +8,8 @@ The installation remains interactive, prompting the user for necessary decisions
 
 <img width="911" height="558" alt="image" src="https://github.com/user-attachments/assets/920ef794-0a82-42b8-80f8-6ad23b0655c3" />
 
+<img width="911" height="558" alt="TUI" src="https://github.com/user-attachments/assets/58bb1167-8602-426d-9f32-f562fadd37be" />
+
 ---
 
 ## Features
