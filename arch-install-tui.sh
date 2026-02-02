@@ -84,7 +84,6 @@ exec_with_progress() {
     return $exit_code
 }
 
-
 # CONFIGURATION PHASE - Collect all settings upfront
 config_choose_disk() {
     local disk_list=""
@@ -382,7 +381,6 @@ SOFTWARE:
         --yesno "$summary" 30 $WIDTH
 }
 
-
 # EXECUTION PHASE - Apply configuration to disk
 cleanup_disk() {
     dialog_infobox "Cleaning Up" "Unmounting /mnt/arch and disabling swap..."
@@ -497,13 +495,37 @@ create_subvolumes() {
     
     mkdir -p /mnt/arch
     mount -o "${base_opts},subvolid=5" "$btrfs_part" /mnt/arch
-    
-    btrfs subvolume create "/mnt/arch/@"
-    btrfs subvolume create "/mnt/arch/@home"
-    btrfs subvolume create "/mnt/arch/@cache"
-    btrfs subvolume create "/mnt/arch/@tmp"
-    btrfs subvolume create "/mnt/arch/@log"
-    btrfs subvolume create "/mnt/arch/@snapshots"
+
+    local tmpfile=$(mktemp)
+
+    dialog --title "Creating Btrfs Subvolumes" \
+        --msgbox "Preparing Btrfs subvolumes.\n\nPress OK to begin..." \
+        $HEIGHT $WIDTH
+
+    (
+        {
+            btrfs subvolume create "/mnt/arch/@"
+            btrfs subvolume create "/mnt/arch/@home"
+            btrfs subvolume create "/mnt/arch/@cache"
+            btrfs subvolume create "/mnt/arch/@tmp"
+            btrfs subvolume create "/mnt/arch/@log"
+            btrfs subvolume create "/mnt/arch/@snapshots"
+        } 2>&1 | tee "$tmpfile"
+
+        echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
+    ) | dialog --title "Creating Btrfs Subvolumes" \
+        --programbox "Creating subvolumes..." $HEIGHT_TALL $WIDTH_WIDE
+
+    local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
+    rm -f "$tmpfile" "${tmpfile}.exit"
+
+    if [ "$exit_code" -ne 0 ]; then
+        dialog --title "Btrfs Error" \
+            --msgbox "Failed to create one or more Btrfs subvolumes." \
+            $HEIGHT $WIDTH
+        umount -R /mnt/arch
+        return 1
+    fi
     
     umount -R /mnt/arch
     sleep 1
@@ -513,24 +535,15 @@ create_subvolumes() {
     # Mount @ to /mnt/arch
     mount -o "${base_opts},subvol=@" "$btrfs_part" /mnt/arch
     
-    # Create and mount other subvolumes
-    mkdir -p /mnt/arch/home
+    # Mount other subvolumes
+    mkdir -p /mnt/arch/{home,.snapshots,boot,var/{cache/pacman/pkg,tmp,log}}
     mount -o "${base_opts},subvol=@home" "$btrfs_part" /mnt/arch/home
-    
-    mkdir -p /mnt/arch/var/cache/pacman/pkg
     mount -o "${base_opts},subvol=@cache" "$btrfs_part" /mnt/arch/var/cache/pacman/pkg
-    
-    mkdir -p /mnt/arch/var/tmp
     mount -o "${base_opts},subvol=@tmp" "$btrfs_part" /mnt/arch/var/tmp
-    
-    mkdir -p /mnt/arch/var/log
     mount -o "${base_opts},subvol=@log" "$btrfs_part" /mnt/arch/var/log
-    
-    mkdir -p /mnt/arch/.snapshots
     mount -o "${base_opts},subvol=@snapshots" "$btrfs_part" /mnt/arch/.snapshots
     
     dialog_infobox "Btrfs Setup" "Mounting EFI partition..."
-    mkdir -p /mnt/arch/boot
     mount "$part1" /mnt/arch/boot
     
     dialog_infobox "Btrfs Setup Complete" "Subvolumes created and mounted successfully."
@@ -578,7 +591,7 @@ install_packages() {
         fi
     fi
     
-    dialog_infobox "Preparing" "Waiting for mirror list update..."
+    dialog_infobox "Preparing" "Waiting for mirror list update to complete..."
     wait $REFLECTOR_PID 2>/dev/null || true
     REFLECTOR_STATUS=$?
     
@@ -667,7 +680,7 @@ install_desktop_environment() {
         arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
-        --programbox "Installing desktop environment..." 30 $WIDTH
+        --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
     rm -f "$tmpfile" "${tmpfile}.exit"
@@ -729,7 +742,7 @@ install_gpu_drivers() {
         fi
         echo $? > "${tmpfile}.exit"
     ) 2>&1 | dialog --title "Installing GPU Drivers" \
-        --programbox "Installing graphics drivers..." 30 $WIDTH
+        --programbox "Installing graphics drivers..." $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 0)
     rm -f "$tmpfile" "${tmpfile}.exit"
@@ -752,7 +765,7 @@ default_entry: 1
     protocol: linux
     kernel_path: boot():/vmlinuz-linux
     module_path: boot():/initramfs-linux.img
-    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw
+    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw zswap.enabled=0
 EOF
     
     dialog_infobox "Bootloader" "Configuring ZRAM..."
@@ -775,7 +788,7 @@ EOF
         arch-chroot /mnt/arch mkinitcpio -P 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Building Initramfs" \
-        --programbox "Rebuilding initramfs..." 30 $WIDTH
+        --programbox "Rebuilding initramfs..." $HEIGHT_TALL $WIDTH_WIDE
     
     rm -f "$tmpfile" "${tmpfile}.exit"
     
@@ -786,10 +799,7 @@ EOF
     dialog_msgbox "Bootloader Complete" "Limine bootloader installed and configured."
 }
 
-
 # MAIN INSTALLATION FLOW
-
-
 run_configuration_wizard() {
     while true; do
         # Collect all configuration
