@@ -576,7 +576,7 @@ install_packages() {
         fi
     fi
     
-    dialog_infobox "Preparing" "Waiting for mirror list update..."
+    dialog_infobox "Preparing" "Waiting for mirror list update to complete..."
     wait $REFLECTOR_PID 2>/dev/null || true
     REFLECTOR_STATUS=$?
     
@@ -665,7 +665,7 @@ install_desktop_environment() {
         arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
-        --programbox "Installing desktop environment..." 30 $WIDTH
+        --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
     rm -f "$tmpfile" "${tmpfile}.exit"
@@ -727,7 +727,7 @@ install_gpu_drivers() {
         fi
         echo $? > "${tmpfile}.exit"
     ) 2>&1 | dialog --title "Installing GPU Drivers" \
-        --programbox "Installing graphics drivers..." 30 $WIDTH
+        --programbox "Installing graphics drivers..." $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 0)
     rm -f "$tmpfile" "${tmpfile}.exit"
@@ -750,7 +750,7 @@ default_entry: 1
     protocol: linux
     kernel_path: boot():/vmlinuz-linux
     module_path: boot():/initramfs-linux.img
-    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw
+    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw zswap.enabled=0
 EOF
     
     dialog_infobox "Bootloader" "Configuring ZRAM..."
@@ -773,7 +773,7 @@ EOF
         arch-chroot /mnt/arch mkinitcpio -P 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Building Initramfs" \
-        --programbox "Rebuilding initramfs..." 30 $WIDTH
+        --programbox "Rebuilding initramfs..." $HEIGHT_TALL $WIDTH_WIDE
     
     rm -f "$tmpfile" "${tmpfile}.exit"
     
