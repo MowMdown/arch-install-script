@@ -110,13 +110,11 @@ config_choose_disk() {
             return 1
         fi
         
+        # Set the disk directly without confirmation
         disk=$(lsblk -dpno NAME | sed -n "${selection}p")
         
         if [ -n "$disk" ]; then
-            if dialog_yesno "Confirm Disk Selection" \
-                "Selected disk: $disk\n\n!!!  ALL DATA WILL BE DESTROYED!\n\nContinue with this disk?"; then
-                return 0
-            fi
+            return 0
         else
             dialog_msgbox "Error" "Invalid disk selection. Please try again."
         fi
@@ -801,21 +799,53 @@ EOF
 
 # MAIN INSTALLATION FLOW
 run_configuration_wizard() {
+    # Initial configuration - collect all settings
+    config_choose_disk || return 1
+    config_set_swap || return 1
+    config_locale_tz_hostname || return 1
+    config_users || return 1
+    config_packages || return 1
+    config_desktop || return 1
+    config_gpu || return 1
+    
+    # Review and modification loop
     while true; do
-        # Collect all configuration
-        config_choose_disk || return 1
-        config_set_swap || return 1
-        config_locale_tz_hostname || return 1
-        config_users || return 1
-        config_packages || return 1
-        config_desktop || return 1
-        config_gpu || return 1
-        
         # Show summary and confirm
         if show_summary; then
             return 0
         fi
-        # If user chose "Modify Settings", loop back
+        
+        # User chose "Modify Settings" - show modification menu
+        local choice
+        choice=$(dialog --title "Modify Configuration" \
+            --menu "Select which section to reconfigure:" \
+            $HEIGHT $WIDTH 8 \
+            1 "Disk Selection" \
+            2 "Swap Configuration" \
+            3 "Locale, Timezone, Hostname" \
+            4 "Accounts & Passwords" \
+            5 "Package Selection" \
+            6 "Desktop Environment" \
+            7 "GPU Drivers" \
+            8 "Cancel (Return to Summary)" \
+            2>&1 >/dev/tty)
+        
+        local ret=$?
+        if [ $ret -ne $DIALOG_OK ]; then
+            continue
+        fi
+        
+        # Execute the selected configuration function
+        case $choice in
+            1) config_choose_disk || return 1 ;;
+            2) config_set_swap || return 1 ;;
+            3) config_locale_tz_hostname || return 1 ;;
+            4) config_users || return 1 ;;
+            5) config_packages || return 1 ;;
+            6) config_desktop || return 1 ;;
+            7) config_gpu || return 1 ;;
+            8) continue ;;
+        esac
     done
 }
 
