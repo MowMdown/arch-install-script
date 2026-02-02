@@ -263,10 +263,15 @@ config_users() {
             return 1
         fi
         
-        if [ -n "$username" ]; then
-            break
-        else
+        # Convert username to lowercase for comparison
+        local username_lower=$(echo "$username" | tr '[:upper:]' '[:lower:]')
+        
+        if [ -z "$username" ]; then
             dialog_msgbox "Error" "Username cannot be empty."
+        elif [ "$username_lower" = "root" ]; then
+            dialog_msgbox "Error" "Username cannot be 'root'\n\nPlease choose a different username."
+        else
+            break
         fi
     done
     
