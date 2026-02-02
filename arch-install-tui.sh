@@ -865,12 +865,22 @@ main() {
     
     # Welcome screen
     if ! dialog_yesno "Arch Linux TUI Installer" \
-        "Welcome to the Arch Linux TUI Installer!\n\n!!!  WARNING !!!\n\nThis installer will:\n• DESTROY ALL DATA on the selected disk\n• Partition and format the disk\n• Install Arch Linux with Btrfs\n• Configure bootloader and system\n\nYou will configure all settings upfront,\nthen review before installation begins.\n\nMake sure you have backups!\n\nProceed with installation?"; then
+        "Welcome to the Arch Linux TUI Installer!\n\n"\
+"!!!  WARNING !!!\n\n"\
+"This installer will:\n"\
+"• DESTROY ALL DATA on the selected disk\n"\
+"• Partition and format the disk\n"\
+"• Install Arch Linux with Btrfs\n"\
+"• Configure bootloader and system\n\n"\
+"You will configure all settings upfront,\n"\
+"then review before installation begins.\n\n"\
+"Make sure you have backups!\n\n"\
+"Proceed with installation?"; then
         clear
         echo "Installation aborted by user."
         exit 0
     fi
-    
+ 
     # Run configuration wizard
     if ! run_configuration_wizard; then
         clear
