@@ -535,9 +535,7 @@ create_subvolumes() {
 
     local tmpfile=$(mktemp)
 
-    dialog --title "Creating Btrfs Subvolumes" \
-        --msgbox "Preparing Btrfs subvolumes.\n\nPress OK to begin..." \
-        $HEIGHT $WIDTH
+    dialog_infobox "Creating Btrfs Subvolumes" "Preparing Btrfs subvolumes..."
 
     (
         {
@@ -551,7 +549,7 @@ create_subvolumes() {
 
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Creating Btrfs Subvolumes" \
-        --programbox "Creating subvolumes..." $HEIGHT_TALL $WIDTH_WIDE
+        --programbox "Creating subvolumes..." $HEIGHT $WIDTH
 
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
     rm -f "$tmpfile" "${tmpfile}.exit"
@@ -712,9 +710,12 @@ install_desktop_environment() {
     dialog --title "Installing Desktop Environment" \
         --msgbox "Installing KDE Plasma desktop.\n\nThis will take several minutes.\nPress OK to begin..." \
         $HEIGHT $WIDTH
-    
+
+    local desktop_pkgs="noto-fonts noto-fonts-cjk pipewire-jack qt6-multimedia plasma-meta \
+        kio-extra kio-admin sddm sddm-kcm dolphin konsole firefox"
+
     (
-        arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
+        arch-chroot /mnt/arch pacman -S --needed --noconfirm $desktop_pkgs 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
         --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
@@ -755,26 +756,27 @@ install_gpu_drivers() {
     
     dialog_msgbox "GPU Detection" "Detected graphics:\n\n$gpu_info\nInstalling appropriate drivers..."
     
-    local amd_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
+    local video_base_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-icd-loader lib32-vulkan-icd-loader"
+    local amd_pkgs="vulkan-radeon lib32-vulkan-radeon"
+    local intel_pkgs="vulkan-intel lib32-vulkan-intel"
     local nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils nvidia-prime"
-    local intel_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
     
     local tmpfile=$(mktemp)
     
     (
         if [[ "$system_type" == "Desktop" ]]; then
-            [[ $has_amd -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs
-            [[ $has_nvidia -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $nvidia_pkgs
-            [[ $has_intel -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs
+            [[ $has_amd -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $amd_pkgs
+            [[ $has_nvidia -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $nvidia_pkgs
+            [[ $has_intel -eq 0 ]] && arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $intel_pkgs
         else
             if [[ $has_intel -eq 0 && $has_nvidia -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs $nvidia_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $intel_pkgs $nvidia_pkgs
             elif [[ $has_amd -eq 0 && $has_nvidia -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs $nvidia_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $amd_pkgs $nvidia_pkgs
             elif [[ $has_intel -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -S --needed --noconfirm $intel_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $intel_pkgs
             elif [[ $has_amd -eq 0 ]]; then
-                arch-chroot /mnt/arch pacman -S --needed --noconfirm $amd_pkgs
+                arch-chroot /mnt/arch pacman -S --needed --noconfirm $video_base_pkgs $amd_pkgs
             fi
         fi
         echo $? > "${tmpfile}.exit"
@@ -925,13 +927,7 @@ main() {
         dialog_msgbox "Permission Error" "This script must be run as root."
         exit 1
     fi
-    
-    # Check for dialog command
-    if ! command -v dialog &> /dev/null; then
-        echo "Installing dialog utility..."
-        pacman -Sy --noconfirm dialog
-    fi
-    
+   
     # Welcome screen
     if ! dialog_yesno "Arch Linux TUI Installer" \
         "Welcome to the Arch Linux TUI Installer!\n\n"\
