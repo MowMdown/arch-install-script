@@ -282,7 +282,7 @@ config_packages() {
     
     local base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
     
-    local pkg_display=$(echo "$base_pkgs" | sed 's/ /\n/g' | pr -t -3)
+    local pkg_display=$(echo "$base_pkgs" | fold -s -w $((WIDTH - 4)))
     
     extra_packages=$(dialog --title "Package Selection" \
         --inputbox "Base packages:\n\n$pkg_display\n\nAdd packages (space-separated) or remove with '!package':" \
