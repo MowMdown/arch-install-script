@@ -48,6 +48,24 @@ dialog_infobox() {
     sleep 2
 }
 
+# Mask password for display - show first 2 and last 2 characters
+mask_password() {
+    local password="$1"
+    local length=${#password}
+    
+    if [ $length -le 4 ]; then
+        # If password is 4 chars or less, just show asterisks
+        printf '%*s' "$length" '' | tr ' ' '*'
+    else
+        # Show first 2 and last 2 chars, mask the middle
+        local first_two="${password:0:2}"
+        local last_two="${password: -2}"
+        local middle_length=$((length - 4))
+        local middle=$(printf '%*s' "$middle_length" '' | tr ' ' '*')
+        echo "${first_two}${middle}${last_two}"
+    fi
+}
+
 # Execute command and show output in dialog
 exec_with_progress() {
     local title="$1"
@@ -110,7 +128,6 @@ config_choose_disk() {
             return 1
         fi
         
-        # Set the disk directly without confirmation
         disk=$(lsblk -dpno NAME | sed -n "${selection}p")
         
         if [ -n "$disk" ]; then
@@ -211,11 +228,17 @@ config_users() {
     # Root password
     while true; do
         root_pass=$(dialog --title "Root Password" \
-            --insecure --passwordbox "Enter root password:" \
+            --insecure --passwordbox "Enter root password (minimum 8 characters):" \
             $HEIGHT $WIDTH 2>&1 >/dev/tty)
         
         if [ $? -ne $DIALOG_OK ]; then
             return 1
+        fi
+        
+        # Check password length
+        if [ ${#root_pass} -lt 8 ]; then
+            dialog_msgbox "Error" "Password must be at least 8 characters long."
+            continue
         fi
         
         local root_pass_confirm
@@ -250,13 +273,19 @@ config_users() {
     # User password
     while true; do
         user_pass=$(dialog --title "User Password" \
-            --insecure --passwordbox "Password for '$username':" \
+            --insecure --passwordbox "Password for '$username' (minimum 8 characters):" \
             $HEIGHT $WIDTH 2>&1 >/dev/tty)
         
         if [ $? -ne $DIALOG_OK ]; then
             return 1
         fi
         
+        # Check password length
+        if [ ${#user_pass} -lt 8 ]; then
+            dialog_msgbox "Error" "Password must be at least 8 characters long."
+            continue
+        fi
+
         local user_pass_confirm
         user_pass_confirm=$(dialog --title "User Password" \
             --insecure --passwordbox "Confirm password:" \
@@ -347,6 +376,10 @@ show_summary() {
         extra_info="$extra_packages"
     fi
     
+    # Mask passwords for display
+    local masked_root_pass=$(mask_password "$root_pass")
+    local masked_user_pass=$(mask_password "$user_pass")
+    
     local summary="INSTALLATION CONFIGURATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -360,8 +393,9 @@ SYSTEM CONFIGURATION:
   Hostname: $hostname
 
 USER ACCOUNTS:
-  Root: Password set
-  User: $username (Password set)
+  Root Password: $masked_root_pass
+  User: $username
+  User Password: $masked_user_pass
 
 SOFTWARE:
   Desktop Environment: $desktop_info
@@ -823,7 +857,7 @@ run_configuration_wizard() {
             1 "Disk Selection" \
             2 "Swap Configuration" \
             3 "Locale, Timezone, Hostname" \
-            4 "Accounts & Passwords" \
+            4 "Accounts | Passwords" \
             5 "Package Selection" \
             6 "Desktop Environment" \
             7 "GPU Drivers" \
