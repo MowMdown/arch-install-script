@@ -326,11 +326,53 @@ config_packages() {
 }
 
 config_desktop() {
-    if dialog_yesno "Desktop Environment" "Install KDE Plasma desktop environment?\n\nThis includes: plasma-meta, sddm, dolphin, konsole, firefox"; then
-        install_desktop="yes"
-    else
+    local choice
+    choice=$(dialog --title "Desktop Environment Selection" \
+        --menu "Select your preferred desktop environment:\n(Select 'None' to skip desktop installation)" \
+        $HEIGHT $WIDTH 5 \
+        0 "None - No desktop environment" \
+        1 "KDE Plasma - Full-featured, modern Qt desktop" \
+        2 "GNOME - Clean, simple GTK desktop" \
+        3 "XFCE - Lightweight, traditional desktop" \
+        4 "Hyprland - Dynamic tiling Wayland compositor" \
+        2>&1 >/dev/tty)
+    
+    local ret=$?
+    if [ $ret -ne $DIALOG_OK ]; then
         install_desktop="no"
+        desktop_choice=""
+        return 1
     fi
+    
+    case $choice in
+        0)
+            install_desktop="no"
+            desktop_choice=""
+            ;;
+        1)
+            install_desktop="yes"
+            desktop_choice="KDE Plasma"
+            ;;
+        2)
+            install_desktop="yes"
+            desktop_choice="GNOME"
+            ;;
+        3)
+            install_desktop="yes"
+            desktop_choice="XFCE"
+            ;;
+        4)
+            install_desktop="yes"
+            desktop_choice="Hyprland"
+            ;;
+        *)
+            install_desktop="no"
+            desktop_choice=""
+            return 1
+            ;;
+    esac
+    
+    return 0
 }
 
 config_gpu() {
@@ -366,9 +408,9 @@ show_summary() {
         swap_info="Enabled (${mem_gib} GiB)"
     fi
     
-    local desktop_info="No"
-    if [ "$install_desktop" = "yes" ]; then
-        desktop_info="Yes (KDE Plasma)"
+    local desktop_info="None"
+    if [ "$install_desktop" = "yes" ] && [ -n "$desktop_choice" ]; then
+        desktop_info="$desktop_choice"
     fi
     
     local gpu_info="No"
@@ -695,7 +737,7 @@ configure_system() {
 }
 
 install_desktop_environment() {
-    if [ "$install_desktop" != "yes" ]; then
+    if [ "$install_desktop" != "yes" ] || [ -z "$desktop_choice" ]; then
         return 0
     fi
     
@@ -706,26 +748,152 @@ install_desktop_environment() {
     arch-chroot /mnt/arch pacman -Syu --noconfirm > /dev/null 2>&1
     
     local tmpfile=$(mktemp)
+    local desktop_pkgs=""
+    local enable_services=""
+    
+    # Base packages common to most desktops
+    local common_pkgs="noto-fonts noto-fonts-cjk pipewire-jack firefox"
+    
+    case "$desktop_choice" in
+        "KDE Plasma")
+            desktop_pkgs="$common_pkgs qt6-multimedia plasma-meta kio-extra kio-admin sddm sddm-kcm dolphin konsole"
+            enable_services="sddm.service"
+            ;;
+        "GNOME")
+            desktop_pkgs="$common_pkgs gnome gnome-extra gdm gnome-tweaks"
+            enable_services="gdm.service"
+            ;;
+        "XFCE")
+            desktop_pkgs="$common_pkgs xfce4 xfce4-goodies lightdm lightdm-gtk-greeter thunar"
+            enable_services="lightdm.service"
+            ;;
+        "Hyprland")
+            desktop_pkgs="$common_pkgs hyprland kitty waybar wofi dunst polkit-kde-agent qt5-wayland qt6-wayland xdg-desktop-portal-hyprland"
+            enable_services=""
+            
+            # Create basic Hyprland config
+            dialog_infobox "Installing Desktop" "Creating Hyprland configuration..."
+            mkdir -p "/mnt/arch/home/$username/.config/hypr"
+            cat > "/mnt/arch/home/$username/.config/hypr/hyprland.conf" << 'HYPRCONF'
+# Hyprland basic configuration
+monitor=,preferred,auto,1
+
+exec-once = waybar
+exec-once = dunst
+exec-once = /usr/lib/polkit-kde-authentication-agent-1
+
+input {
+    kb_layout = us
+    follow_mouse = 1
+    touchpad {
+        natural_scroll = no
+    }
+}
+
+general {
+    gaps_in = 5
+    gaps_out = 10
+    border_size = 2
+    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
+    col.inactive_border = rgba(595959aa)
+    layout = dwindle
+}
+
+decoration {
+    rounding = 5
+    blur {
+        enabled = true
+        size = 3
+        passes = 1
+    }
+}
+
+animations {
+    enabled = yes
+    bezier = myBezier, 0.05, 0.9, 0.1, 1.05
+    animation = windows, 1, 7, myBezier
+    animation = windowsOut, 1, 7, default, popin 80%
+    animation = border, 1, 10, default
+    animation = fade, 1, 7, default
+    animation = workspaces, 1, 6, default
+}
+
+dwindle {
+    pseudotile = yes
+    preserve_split = yes
+}
+
+# Key bindings
+$mainMod = SUPER
+
+bind = $mainMod, Return, exec, kitty
+bind = $mainMod, Q, killactive,
+bind = $mainMod, M, exit,
+bind = $mainMod, E, exec, thunar
+bind = $mainMod, V, togglefloating,
+bind = $mainMod, R, exec, wofi --show drun
+bind = $mainMod, P, pseudo,
+bind = $mainMod, J, togglesplit,
+
+# Move focus
+bind = $mainMod, left, movefocus, l
+bind = $mainMod, right, movefocus, r
+bind = $mainMod, up, movefocus, u
+bind = $mainMod, down, movefocus, d
+
+# Switch workspaces
+bind = $mainMod, 1, workspace, 1
+bind = $mainMod, 2, workspace, 2
+bind = $mainMod, 3, workspace, 3
+bind = $mainMod, 4, workspace, 4
+bind = $mainMod, 5, workspace, 5
+bind = $mainMod, 6, workspace, 6
+bind = $mainMod, 7, workspace, 7
+bind = $mainMod, 8, workspace, 8
+bind = $mainMod, 9, workspace, 9
+bind = $mainMod, 0, workspace, 10
+
+# Move active window to workspace
+bind = $mainMod SHIFT, 1, movetoworkspace, 1
+bind = $mainMod SHIFT, 2, movetoworkspace, 2
+bind = $mainMod SHIFT, 3, movetoworkspace, 3
+bind = $mainMod SHIFT, 4, movetoworkspace, 4
+bind = $mainMod SHIFT, 5, movetoworkspace, 5
+bind = $mainMod SHIFT, 6, movetoworkspace, 6
+bind = $mainMod SHIFT, 7, movetoworkspace, 7
+bind = $mainMod SHIFT, 8, movetoworkspace, 8
+bind = $mainMod SHIFT, 9, movetoworkspace, 9
+bind = $mainMod SHIFT, 0, movetoworkspace, 10
+HYPRCONF
+            arch-chroot /mnt/arch chown -R "$username:$username" "/home/$username/.config"
+            ;;
+        *)
+            dialog_msgbox "Desktop Installation" "Unknown desktop choice. Skipping."
+            return 1
+            ;;
+    esac
     
     dialog --title "Installing Desktop Environment" \
-        --msgbox "Installing KDE Plasma desktop.\n\nThis will take several minutes.\nPress OK to begin..." \
+        --msgbox "Installing $desktop_choice desktop.\n\nThis will take several minutes.\nPress OK to begin..." \
         $HEIGHT $WIDTH
-
-    local desktop_pkgs="noto-fonts noto-fonts-cjk pipewire-jack qt6-multimedia plasma-meta \
-        kio-extra kio-admin sddm sddm-kcm dolphin konsole firefox"
 
     (
         arch-chroot /mnt/arch pacman -S --needed --noconfirm $desktop_pkgs 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
-    ) | dialog --title "Installing KDE Plasma" \
+    ) | dialog --title "Installing $desktop_choice" \
         --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
     
     local exit_code=$(cat "${tmpfile}.exit" 2>/dev/null || echo 1)
     rm -f "$tmpfile" "${tmpfile}.exit"
     
     if [ $exit_code -eq 0 ]; then
-        arch-chroot /mnt/arch systemctl enable sddm.service
-        dialog_msgbox "Desktop Installed" "KDE Plasma installed successfully."
+        # Enable display manager services if specified
+        if [ -n "$enable_services" ]; then
+            for service in $enable_services; do
+                arch-chroot /mnt/arch systemctl enable "$service"
+            done
+        fi
+        dialog_msgbox "Desktop Installed" "$desktop_choice installed successfully."
     else
         dialog_msgbox "Desktop Installation" "Desktop installation encountered errors."
     fi
