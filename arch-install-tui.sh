@@ -318,7 +318,7 @@ config_packages() {
     
     extra_packages=$(dialog --title "Package Selection" \
         --inputbox "Base packages:\n\n$pkg_display\n\nAdd packages (space-separated) or remove with '!package':" \
-        25 $WIDTH "" 2>&1 >/dev/tty)
+        $HEIGHT $WIDTH_WIDE "" 2>&1 >/dev/tty)
     
     if [ $? -ne $DIALOG_OK ]; then
         extra_packages=""
@@ -392,11 +392,18 @@ config_gpu() {
             return 0
         fi
         
-        if [[ "$system_type" -eq 1 ]]; then
-            system_type="Desktop"
-        else
-            system_type="Laptop"
-        fi
+        case "$system_type" in
+            1)
+                system_type="Desktop"
+                ;;
+            2)
+                system_type="Laptop"
+                ;;
+            *)
+                install_gpu="no"
+                return 1
+                ;;
+        esac
     else
         install_gpu="no"
     fi
