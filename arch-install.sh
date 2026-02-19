@@ -213,11 +213,17 @@ config_users() {
     # Root password
     while true; do
         root_pass=$(dialog --title "Root Password" \
-            --insecure --passwordbox "Enter root password:" \
+            --insecure --passwordbox "Enter root password (minimum 8 characters):" \
             $HEIGHT $WIDTH 2>&1 >/dev/tty)
         
         if [ $? -ne $DIALOG_OK ]; then
             return 1
+        fi
+        
+        # Check password length
+        if [ ${#root_pass} -lt 8 ]; then
+            dialog_msgbox "Error" "Password must be at least 8 characters long."
+            continue
         fi
         
         local root_pass_confirm
@@ -242,23 +248,34 @@ config_users() {
             return 1
         fi
         
-        if [ -n "$username" ]; then
-            break
-        else
+        # Convert username to lowercase for comparison
+        local username_lower=$(echo "$username" | tr '[:upper:]' '[:lower:]')
+        
+        if [ -z "$username" ]; then
             dialog_msgbox "Error" "Username cannot be empty."
+        elif [ "$username_lower" = "root" ]; then
+            dialog_msgbox "Error" "Username cannot be 'root'\n\nPlease choose a different username."
+        else
+            break
         fi
     done
     
     # User password
     while true; do
         user_pass=$(dialog --title "User Password" \
-            --insecure --passwordbox "Password for '$username':" \
+            --insecure --passwordbox "Password for '$username' (minimum 8 characters):" \
             $HEIGHT $WIDTH 2>&1 >/dev/tty)
         
         if [ $? -ne $DIALOG_OK ]; then
             return 1
         fi
         
+        # Check password length
+        if [ ${#user_pass} -lt 8 ]; then
+            dialog_msgbox "Error" "Password must be at least 8 characters long."
+            continue
+        fi
+
         local user_pass_confirm
         user_pass_confirm=$(dialog --title "User Password" \
             --insecure --passwordbox "Confirm password:" \
@@ -660,9 +677,9 @@ install_desktop_environment() {
     dialog --title "Installing Desktop Environment" \
         --msgbox "Installing KDE Plasma desktop.\n\nThis will take several minutes.\nPress OK to begin..." \
         $HEIGHT $WIDTH
-    
+
     (
-        arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta dolphin konsole firefox 2>&1 | tee "$tmpfile"
+        arch-chroot /mnt/arch pacman -S --needed --noconfirm noto-fonts noto-fonts-cjk pipewire-jack qt6-multimedia plasma-meta dolphin kio-extra kio-admin konsole firefox 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
         --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
