@@ -294,7 +294,7 @@ config_packages() {
 }
 
 config_desktop() {
-    if dialog_yesno "Desktop Environment" "Install KDE Plasma desktop environment?\n\nThis includes: plasma-meta, sddm, dolphin, konsole, firefox"; then
+    if dialog_yesno "Desktop Environment" "Install KDE Plasma desktop environment?\n\nThis includes: plasma-meta, dolphin, konsole, firefox"; then
         install_desktop="yes"
     else
         install_desktop="no"
@@ -662,7 +662,7 @@ install_desktop_environment() {
         $HEIGHT $WIDTH
     
     (
-        arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta sddm dolphin konsole firefox 2>&1 | tee "$tmpfile"
+        arch-chroot /mnt/arch pacman -S --needed --noconfirm plasma-meta dolphin konsole firefox 2>&1 | tee "$tmpfile"
         echo ${PIPESTATUS[0]} > "${tmpfile}.exit"
     ) | dialog --title "Installing KDE Plasma" \
         --programbox "Installing desktop environment..." $HEIGHT_TALL $WIDTH_WIDE
@@ -671,7 +671,7 @@ install_desktop_environment() {
     rm -f "$tmpfile" "${tmpfile}.exit"
     
     if [ $exit_code -eq 0 ]; then
-        arch-chroot /mnt/arch systemctl enable sddm.service
+        arch-chroot /mnt/arch systemctl enable plasmalogin.service
         dialog_msgbox "Desktop Installed" "KDE Plasma installed successfully."
     else
         dialog_msgbox "Desktop Installation" "Desktop installation encountered errors."
