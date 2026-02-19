@@ -100,7 +100,7 @@ chmod +x alias.sh
 ### 3. Run the script
 
 ```sh
-./ais.sh
+./alias.sh
 ```
 
 You must run it as root. The script will stop if not executed with root privileges.
