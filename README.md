@@ -67,7 +67,7 @@ Supports:
 
 ### Optional KDE Plasma Installation
 
-* kde plasma, sddm, dolphin, konsole, and firefox
+* kde plasma, plasma-login-manager, dolphin, konsole, and firefox
 
 ---
 
