@@ -1,4 +1,4 @@
-# A.L.I.A.S. — Arch Linux Integrated Automation Script
+# A.L.I.A.S. — Arch Linux Installer Automation Script
 
 This repository contains an automated Arch Linux installation script designed to simplify and streamline the installation process while retaining full transparency and user control. The script prepares the disk, configures the filesystem using Btrfs subvolumes, installs the base system, configures the environment inside the new installation, and optionally installs GPU drivers and KDE Plasma.
 
