@@ -87,14 +87,14 @@ To use this script, you must:
 ### 1. Download the script
 
 ```
-curl -L -o ais.sh \
+curl -L -o alias.sh \
 https://github.com/MowMdown/arch-install-script/releases/download/v2/arch-install-script.sh
 ```
 
 ### 2. Make the script executable
 
 ```sh
-chmod +x ais.sh
+chmod +x alias.sh
 ```
 
 ### 3. Run the script
