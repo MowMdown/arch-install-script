@@ -88,7 +88,7 @@ To use this script, you must:
 
 ```
 curl -L -o alias.sh \
-https://github.com/MowMdown/arch-install-script/releases/download/v2/arch-install-script.sh
+https://github.com/MowMdown/arch-install-script/releases/download/v3/alias.sh
 ```
 
 ### 2. Make the script executable
