@@ -129,7 +129,7 @@ config_set_swap() {
         
         while true; do
             mem_gib=$(dialog --title "Swap Size" \
-                --inputbox "Enter swap size in GB (whole numbers):" \
+                --inputbox "Enter swap size in GiB (whole numbers):" \
                 $HEIGHT $WIDTH "" 2>&1 >/dev/tty)
             
             if [ $? -ne $DIALOG_OK ]; then
@@ -297,7 +297,7 @@ config_packages() {
         microcode_pkg="intel-ucode amd-ucode"
     fi
     
-    local base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
+    local base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector $microcode_pkg"
     
     local pkg_display=$(echo "$base_pkgs" | sed 's/ /\n/g' | pr -t -3)
     
@@ -311,7 +311,7 @@ config_packages() {
 }
 
 config_desktop() {
-    if dialog_yesno "Desktop Environment" "Install KDE Plasma desktop environment?\n\nThis includes: plasma-meta, dolphin, konsole, firefox"; then
+    if dialog_yesno "Desktop Environment" "Install KDE Plasma desktop environment?"; then
         install_desktop="yes"
     else
         install_desktop="no"
@@ -464,12 +464,12 @@ partition_disk() {
     exec_with_progress "Partitioning" "Wiping partition table" \
         "sgdisk --zap-all '$disk' && wipefs -a '$disk'"
     
-    exec_with_progress "Partitioning" "Creating EFI partition (4GB)" \
+    exec_with_progress "Partitioning" "Creating EFI partition (4GiB)" \
         "sgdisk -n 1:0:4G -I -t1:EF00 '$disk'"
     part1="${disk}1"
     
     if [[ "$use_swap" == "yes" ]]; then
-        exec_with_progress "Partitioning" "Creating swap partition (${mem_gib}GB)" \
+        exec_with_progress "Partitioning" "Creating swap partition (${mem_gib}GiB)" \
             "sgdisk -n 2:0:+${mem_gib}G -I -t2:8200 '$disk'"
         part2="${disk}2"
         
@@ -526,27 +526,27 @@ create_subvolumes() {
     dialog_infobox "Btrfs Setup" "Mounting Btrfs subvolumes..."
     
     # Mount @ to /mnt/arch
-    mount -o "${base_opts},subvol=@" "$btrfs_part" /mnt/arch
+    mount --mkdir -o "${base_opts},subvol=@" "$btrfs_part" /mnt/arch
     
     # Create and mount other subvolumes
-    mkdir -p /mnt/arch/home
-    mount -o "${base_opts},subvol=@home" "$btrfs_part" /mnt/arch/home
+    #mkdir -p /mnt/arch/home
+    mount --mkdir -o "${base_opts},subvol=@home" "$btrfs_part" /mnt/arch/home
     
-    mkdir -p /mnt/arch/var/cache/pacman/pkg
-    mount -o "${base_opts},subvol=@cache" "$btrfs_part" /mnt/arch/var/cache/pacman/pkg
+    #mkdir -p /mnt/arch/var/cache/pacman/pkg
+    mount --mkdir -o "${base_opts},subvol=@cache" "$btrfs_part" /mnt/arch/var/cache/pacman/pkg
     
-    mkdir -p /mnt/arch/var/tmp
-    mount -o "${base_opts},subvol=@tmp" "$btrfs_part" /mnt/arch/var/tmp
+    #mkdir -p /mnt/arch/var/tmp
+    mount --mkdir -o "${base_opts},subvol=@tmp" "$btrfs_part" /mnt/arch/var/tmp
     
-    mkdir -p /mnt/arch/var/log
-    mount -o "${base_opts},subvol=@log" "$btrfs_part" /mnt/arch/var/log
+    #mkdir -p /mnt/arch/var/log
+    mount --mkdir -o "${base_opts},subvol=@log" "$btrfs_part" /mnt/arch/var/log
     
-    mkdir -p /mnt/arch/.snapshots
-    mount -o "${base_opts},subvol=@snapshots" "$btrfs_part" /mnt/arch/.snapshots
+    #mkdir -p /mnt/arch/.snapshots
+    mount --mkdir -o "${base_opts},subvol=@snapshots" "$btrfs_part" /mnt/arch/.snapshots
     
     dialog_infobox "Btrfs Setup" "Mounting EFI partition..."
-    mkdir -p /mnt/arch/boot
-    mount "$part1" /mnt/arch/boot
+    #mkdir -p /mnt/arch/boot
+    mount --mkdir "$part1" /mnt/arch/boot
     
     dialog_infobox "Btrfs Setup Complete" "Subvolumes created and mounted successfully."
 }
@@ -559,7 +559,7 @@ install_packages() {
         microcode_pkg="intel-ucode amd-ucode"
     fi
     
-    local base_pkgs="base base-devel linux linux-firmware sof-firmware limine sudo nano git networkmanager btrfs-progs reflector zram-generator $microcode_pkg"
+    local base_pkgs="base base-devel linux linux-headers linux-firmware sof-firmware dkms limine sudo nano git networkmanager btrfs-progs reflector $microcode_pkg"
     
     # Process extra packages
     if [[ -n "${extra_packages// }" ]]; then
@@ -721,7 +721,7 @@ install_gpu_drivers() {
     dialog_msgbox "GPU Detection" "Detected graphics:\n\n$gpu_info\nInstalling appropriate drivers..."
     
     local amd_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader"
-    local nvidia_pkgs="nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils nvidia-prime"
+    local nvidia_pkgs="nvidia-open-dkms nvidia-utils nvidia-settings lib32-nvidia-utils nvidia-prime"
     local intel_pkgs="mesa lib32-mesa vulkan-mesa-layers lib32-vulkan-mesa-layers vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader"
     
     local tmpfile=$(mktemp)
@@ -767,14 +767,7 @@ default_entry: 1
     protocol: linux
     kernel_path: boot():/vmlinuz-linux
     module_path: boot():/initramfs-linux.img
-    cmdline: root=LABEL=ARCH rootflags=subvol=@ rw zswap.enabled=0
-EOF
-    
-    dialog_infobox "Bootloader" "Configuring ZRAM..."
-    cat > /mnt/arch/etc/systemd/zram-generator.conf << 'EOF'
-[zram0]
-zram-size = min(ram)
-compression-algorithm = zstd
+    cmdline: root=LABEL=ARCH rootflags=subvol=@
 EOF
     
     if grep -q "SWAP" /mnt/arch/etc/fstab; then
