@@ -19,12 +19,12 @@ The installation remains interactive, prompting the user for necessary decisions
 * Interactive disk selector.
 * Automatic disk cleanup if selected disk already has partitions.
 * GPT partitioning with `sgdisk`.
-  * EFI system partition (4 GB, FAT32)
+  * EFI system partition (4 GiB, FAT32)
   * Optional swap partition (user-defined size)
   * Btrfs root partition
 * Btrfs formatting and subvolume setup:
 
-  * `@` (root)
+  * `@`
   * `@home`
   * `@cache`
   * `@tmp`
@@ -35,7 +35,7 @@ The installation remains interactive, prompting the user for necessary decisions
 
 * Automatic CPU microcode detection (Intel/AMD).
 * Installs Arch base system with key packages:
-  * base, base-devel, linux, linux-firmware, sof-firmware, sudo, git, nano, networkmanager, btrfs-progs, reflector, zram-generator, limine
+  * base, base-devel, linux, linux-headers, linux-firmware, sof-firmware, dkms, sudo, git, nano, networkmanager, btrfs-progs, reflector, limine
 * Allows optional installation of used defined additional packages.
 * Locale and timezone configuration.
 * Root password creation and user account setup with wheel group.
@@ -111,7 +111,7 @@ You must run it as root. The script will stop if not executed with root privileg
 
 | Partition              | Size         | Type                 | Description                |
 | ---------------------- | ------------ | -------------------- | -------------------------- |
-| /dev/sdX1              | 4 GB         | EFI System Partition | Bootloader                 |
+| /dev/sdX1              | 4 GiB        | EFI System Partition | Bootloader                 |
 | /dev/sdX2              | User-defined | Swap (optional)      | Swap partition             |
 | /dev/sdX3 or /dev/sdX2 | Remainder    | Btrfs                | Root filesystem            |
 
